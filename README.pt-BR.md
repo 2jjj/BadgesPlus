@@ -10,6 +10,8 @@ Plugin para o **[Vesktop](https://github.com/Vencord/Vesktop)** (e Vencord) que 
 - **Português e inglês**: segue o idioma do Discord, ou escolha nas configurações
 - Instalador automático para Windows
 
+> Usa BetterDiscord? Pegue o **[lirenzzzin/BadgesPlus-BetterDiscord](https://github.com/lirenzzzin/BadgesPlus-BetterDiscord)**
+
 ---
 
 ## Instalação automática (Windows)
