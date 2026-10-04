@@ -12,7 +12,7 @@ import { queueProfiles } from "./profileQueue";
 import { settings } from "./settings";
 
 export function UserBadges({ user, where }: { user: User; where: "chat" | "list"; }) {
-    // settings.use deixa o componente reagir na hora quando uma configuração muda
+    // settings.use: reage na hora a mudanças nas configurações / re-renders as soon as a setting changes
     const s = settings.use();
 
     const enabled = where === "chat" ? s.showInChat : s.showInMemberList;
@@ -28,7 +28,7 @@ export function UserBadges({ user, where }: { user: User; where: "chat" | "list"
     useEffect(() => {
         if (!allowed || profileBadges || !s.fetchProfiles) return;
         if (user.bot && !s.fetchBotProfiles) return;
-        // quem está aparecendo na tela passa na frente da fila
+        // quem está na tela passa na frente / whoever is on screen jumps the queue
         queueProfiles([user.id], true);
     }, [user.id, allowed, profileBadges, s.fetchProfiles, s.fetchBotProfiles]);
 

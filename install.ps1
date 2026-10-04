@@ -1,19 +1,27 @@
-﻿# BadgesPlus - instalador automático para o Vesktop
+﻿# BadgesPlus - automatic installer for Vesktop / instalador automático para o Vesktop
 # https://github.com/lirenzzzin/BadgesPlus
 #
-# O que ele faz:
-#   1. Confere (e se precisar, instala) Git, Node.js e pnpm
-#   2. Baixa ou atualiza o código do Vencord em Documentos\Vencord
-#   3. Copia o plugin para Vencord\src\userplugins\badgesPlus
-#   4. Compila o Vencord
-#   5. Fecha o Vesktop e encontra onde ele guarda as configurações
-#   6. Aponta o Vesktop para o Vencord compilado (Vencord Location)
-#   7. Abre o Vesktop de novo
+# EN: 1. Checks (and if needed installs) Git, Node.js and pnpm
+#     2. Downloads or updates the Vencord source in Documents\Vencord
+#     3. Copies the plugin to Vencord\src\userplugins\badgesPlus
+#     4. Builds Vencord
+#     5. Finds Vesktop (installed or portable) and closes it
+#     6. Points Vesktop to the built Vencord (Vencord Location)
+#     7. Opens Vesktop again
+#
+# PT: 1. Confere (e se precisar, instala) Git, Node.js e pnpm
+#     2. Baixa ou atualiza o código do Vencord em Documentos\Vencord
+#     3. Copia o plugin para Vencord\src\userplugins\badgesPlus
+#     4. Compila o Vencord
+#     5. Encontra o Vesktop (instalado ou portátil) e fecha ele
+#     6. Aponta o Vesktop para o Vencord compilado (Vencord Location)
+#     7. Abre o Vesktop de novo
 
 param(
     [string]$VencordDir = (Join-Path ([Environment]::GetFolderPath("MyDocuments")) "Vencord"),
-    [switch]$Yes,          # responde "sim" para todas as perguntas
-    [switch]$SkipVesktop   # só compila, não mexe no Vesktop
+    [ValidateSet("auto", "en", "pt")][string]$Lang = "auto",
+    [switch]$Yes,          # answer "yes" to everything / responde "sim" para tudo
+    [switch]$SkipVesktop   # only build, don't touch Vesktop / só compila, não mexe no Vesktop
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,18 +31,21 @@ $RepoZipUrl = "https://github.com/lirenzzzin/BadgesPlus/archive/refs/heads/main.
 $PluginFolder = "badgesPlus"
 $TotalSteps = 7
 
+if ($Lang -eq "auto") { $Lang = if ((Get-UICulture).Name -like "pt*") { "pt" } else { "en" } }
+function T($en, $pt) { if ($Lang -eq "pt") { $pt } else { $en } }
+
 function Step($n, $msg) { Write-Host ""; Write-Host "[$n/$TotalSteps] $msg" -ForegroundColor Cyan }
 function Ok($msg) { Write-Host "   OK  $msg" -ForegroundColor Green }
 function Warn($msg) { Write-Host "   !!  $msg" -ForegroundColor Yellow }
 function Fail($msg) {
     Write-Host ""
-    Write-Host "   ERRO: $msg" -ForegroundColor Red
+    Write-Host ("   " + (T "ERROR" "ERRO") + ": $msg") -ForegroundColor Red
     Write-Host ""
     exit 1
 }
 function Ask($question) {
     if ($Yes) { return $true }
-    $answer = Read-Host "   $question (S/N)"
+    $answer = Read-Host ("   $question " + (T "(Y/N)" "(S/N)"))
     return $answer -match "^[sSyY]"
 }
 function Has($cmd) { [bool](Get-Command $cmd -ErrorAction SilentlyContinue) }
@@ -45,11 +56,15 @@ function Refresh-Path {
 }
 function Run($what, [scriptblock]$block) {
     & $block
-    if ($LASTEXITCODE -ne 0) { Fail "Falhou ao $what (código $LASTEXITCODE). Veja as mensagens acima." }
+    if ($LASTEXITCODE -ne 0) {
+        Fail (T "Failed to $($what.en) (exit code $LASTEXITCODE). See the messages above." "Falhou ao $($what.pt) (código $LASTEXITCODE). Veja as mensagens acima.")
+    }
 }
 
-# Arquivos que o Vesktop exige na pasta do Vencord. Se faltar algum quando o Vesktop
-# abre, ele baixa o Vencord oficial POR CIMA da pasta, apagando o plugin.
+# Files Vesktop requires in the Vencord folder. If any is missing when Vesktop starts,
+# it downloads the official Vencord ON TOP of the folder, wiping the plugin.
+# Arquivos que o Vesktop exige. Se faltar algum quando ele abre, ele baixa o Vencord
+# oficial POR CIMA da pasta, apagando o plugin.
 $RequiredFiles = @("vencordDesktopMain.js", "vencordDesktopPreload.js", "vencordDesktopRenderer.js", "vencordDesktopRenderer.css")
 
 function Get-VesktopDataDirs {
@@ -66,7 +81,7 @@ function Get-VesktopDataDirs {
     )
     foreach ($p in $installed) { if (Test-Path $p) { $exes.Add($p) } }
 
-    # versão portátil: procura vesktop.exe nas pastas mais comuns
+    # portable version: look for vesktop.exe in common folders / versão portátil
     $places = @(
         [Environment]::GetFolderPath("Desktop"),
         [Environment]::GetFolderPath("MyDocuments"),
@@ -84,6 +99,7 @@ function Get-VesktopDataDirs {
 
     foreach ($exe in ($exes | Select-Object -Unique)) {
         $exeDir = Split-Path $exe -Parent
+        # same rule as Vesktop: no "Uninstall Vesktop.exe" next to it = portable
         # mesma regra do Vesktop: sem "Uninstall Vesktop.exe" ao lado = portátil
         if (Test-Path (Join-Path $exeDir "Uninstall Vesktop.exe")) {
             $dirs.Add((Join-Path $env:APPDATA "vesktop"))
@@ -116,138 +132,143 @@ function Set-VencordLocation($dataDir, $distDir) {
     if ($state.PSObject.Properties["vencordDir"]) { $state.vencordDir = $distDir }
     else { $state | Add-Member -NotePropertyName vencordDir -NotePropertyValue $distDir }
 
-    # UTF-8 SEM BOM: com BOM o Vesktop não consegue ler o arquivo
+    # UTF-8 WITHOUT BOM: Vesktop can't read the file with a BOM / SEM BOM: com BOM o Vesktop não lê
     $json = $state | ConvertTo-Json -Depth 20
     [IO.File]::WriteAllText($file, $json, (New-Object Text.UTF8Encoding($false)))
 }
 
 Write-Host ""
 Write-Host "  ==============================================" -ForegroundColor Magenta
-Write-Host "    BadgesPlus - instalador para o Vesktop" -ForegroundColor Magenta
+Write-Host ("    BadgesPlus - " + (T "installer for Vesktop" "instalador para o Vesktop")) -ForegroundColor Magenta
 Write-Host "  ==============================================" -ForegroundColor Magenta
-Write-Host "   Pasta do Vencord: $VencordDir"
+Write-Host ("   " + (T "Vencord folder" "Pasta do Vencord") + ": $VencordDir")
 
 # ---------------------------------------------------------------------------
-Step 1 "Conferindo Git, Node.js e pnpm"
+Step 1 (T "Checking Git, Node.js and pnpm" "Conferindo Git, Node.js e pnpm")
 
 $missing = @()
 if (-not (Has git)) { $missing += [pscustomobject]@{ Name = "Git"; Id = "Git.Git" } }
 if (-not (Has node)) { $missing += [pscustomobject]@{ Name = "Node.js"; Id = "OpenJS.NodeJS.LTS" } }
 
 if ($missing.Count -gt 0) {
-    Warn ("Faltando: " + (($missing | ForEach-Object Name) -join ", "))
+    Warn ((T "Missing" "Faltando") + ": " + (($missing | ForEach-Object Name) -join ", "))
     if (-not (Has winget)) {
-        Fail "Instale manualmente o Git (https://git-scm.com) e o Node.js LTS (https://nodejs.org) e rode o instalador de novo."
+        Fail (T "Install Git (https://git-scm.com) and Node.js LTS (https://nodejs.org) manually and run the installer again." `
+                "Instale manualmente o Git (https://git-scm.com) e o Node.js LTS (https://nodejs.org) e rode o instalador de novo.")
     }
-    if (-not (Ask "Instalar agora pelo winget?")) {
-        Fail "Instalação cancelada. Instale o Git e o Node.js e rode o instalador de novo."
+    if (-not (Ask (T "Install them now with winget?" "Instalar agora pelo winget?"))) {
+        Fail (T "Installation cancelled. Install Git and Node.js and run the installer again." "Instalação cancelada. Instale o Git e o Node.js e rode o instalador de novo.")
     }
     foreach ($m in $missing) {
-        Write-Host "   Instalando $($m.Name)..."
-        Run "instalar $($m.Name)" { winget install --id $m.Id -e --accept-source-agreements --accept-package-agreements }
+        Write-Host ("   " + (T "Installing" "Instalando") + " $($m.Name)...")
+        Run @{ en = "install $($m.Name)"; pt = "instalar $($m.Name)" } { winget install --id $m.Id -e --accept-source-agreements --accept-package-agreements }
     }
     Refresh-Path
     if (-not (Has git) -or -not (Has node)) {
-        Fail "Os programas foram instalados, mas o Windows ainda não os reconhece. Feche esta janela e rode o instalador de novo."
+        Fail (T "The programs were installed, but Windows doesn't see them yet. Close this window and run the installer again." `
+                "Os programas foram instalados, mas o Windows ainda não os reconhece. Feche esta janela e rode o instalador de novo.")
     }
 }
 Ok "Git $((git --version) -replace 'git version ', '')"
 Ok "Node.js $(node --version)"
 
 if (-not (Has pnpm)) {
-    Write-Host "   Instalando pnpm..."
-    Run "instalar o pnpm" { npm install -g pnpm }
+    Write-Host ("   " + (T "Installing pnpm..." "Instalando pnpm..."))
+    Run @{ en = "install pnpm"; pt = "instalar o pnpm" } { npm install -g pnpm }
     Refresh-Path
-    if (-not (Has pnpm)) { Fail "O pnpm foi instalado mas não foi encontrado. Feche esta janela e rode o instalador de novo." }
+    if (-not (Has pnpm)) {
+        Fail (T "pnpm was installed but can't be found. Close this window and run the installer again." "O pnpm foi instalado mas não foi encontrado. Feche esta janela e rode o instalador de novo.")
+    }
 }
 Ok "pnpm $(pnpm --version)"
 
 # ---------------------------------------------------------------------------
-Step 2 "Baixando / atualizando o Vencord"
+Step 2 (T "Downloading / updating Vencord" "Baixando / atualizando o Vencord")
 
 if (Test-Path (Join-Path $VencordDir "package.json")) {
     Push-Location $VencordDir
     git pull --ff-only
-    if ($LASTEXITCODE -ne 0) { Warn "Não consegui atualizar o Vencord. Continuando com a versão que já está na pasta." }
-    else { Ok "Vencord atualizado" }
+    if ($LASTEXITCODE -ne 0) { Warn (T "Couldn't update Vencord. Continuing with the version already in the folder." "Não consegui atualizar o Vencord. Continuando com a versão que já está na pasta.") }
+    else { Ok (T "Vencord updated" "Vencord atualizado") }
     Pop-Location
 } elseif ((Test-Path $VencordDir) -and (Get-ChildItem $VencordDir -Force | Select-Object -First 1)) {
-    Fail "A pasta $VencordDir já existe e não é o Vencord. Renomeie ou apague essa pasta e rode de novo."
+    Fail (T "The folder $VencordDir already exists and isn't Vencord. Rename or delete it and run again." `
+            "A pasta $VencordDir já existe e não é o Vencord. Renomeie ou apague essa pasta e rode de novo.")
 } else {
-    Run "baixar o Vencord" { git clone --depth 1 https://github.com/Vendicated/Vencord "$VencordDir" }
-    Ok "Vencord baixado"
+    Run @{ en = "download Vencord"; pt = "baixar o Vencord" } { git clone --depth 1 https://github.com/Vendicated/Vencord "$VencordDir" }
+    Ok (T "Vencord downloaded" "Vencord baixado")
 }
 
 # ---------------------------------------------------------------------------
-Step 3 "Copiando o plugin BadgesPlus"
+Step 3 (T "Copying the BadgesPlus plugin" "Copiando o plugin BadgesPlus")
 
 $source = Join-Path $PSScriptRoot $PluginFolder
 if (-not (Test-Path (Join-Path $source "index.tsx"))) {
-    Write-Host "   Baixando a versão mais recente do GitHub..."
+    Write-Host ("   " + (T "Downloading the latest version from GitHub..." "Baixando a versão mais recente do GitHub..."))
     $tmp = Join-Path $env:TEMP "badgesplus-download"
-    Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
     New-Item -ItemType Directory -Force -Path $tmp | Out-Null
     $zip = Join-Path $tmp "repo.zip"
     Invoke-WebRequest -UseBasicParsing -Uri $RepoZipUrl -OutFile $zip
     Expand-Archive -Path $zip -DestinationPath $tmp -Force
     $source = Get-ChildItem $tmp -Directory -Recurse -Filter $PluginFolder | Select-Object -First 1 -ExpandProperty FullName
-    if (-not $source) { Fail "Não encontrei a pasta do plugin no download." }
+    if (-not $source) { Fail (T "Couldn't find the plugin folder in the download." "Não encontrei a pasta do plugin no download.") }
 }
 
 $userplugins = Join-Path $VencordDir "src\userplugins"
 $target = Join-Path $userplugins $PluginFolder
 New-Item -ItemType Directory -Force -Path $userplugins | Out-Null
-Remove-Item $target -Recurse -Force -ErrorAction SilentlyContinue
+if (Test-Path $target) { Remove-Item $target -Recurse -Force }
 Copy-Item $source $target -Recurse
-Ok "Plugin copiado para $target"
+Ok ((T "Plugin copied to" "Plugin copiado para") + " $target")
 
 # ---------------------------------------------------------------------------
-Step 4 "Compilando o Vencord (pode levar alguns minutos na primeira vez)"
+Step 4 (T "Building Vencord (may take a few minutes the first time)" "Compilando o Vencord (pode levar alguns minutos na primeira vez)")
 
 Push-Location $VencordDir
-Run "instalar as dependências do Vencord" { pnpm install --frozen-lockfile }
-Run "compilar o Vencord" { pnpm build }
+Run @{ en = "install Vencord's dependencies"; pt = "instalar as dependências do Vencord" } { pnpm install --frozen-lockfile }
+Run @{ en = "build Vencord"; pt = "compilar o Vencord" } { pnpm build }
 Pop-Location
 
 $dist = Join-Path $VencordDir "dist"
 foreach ($f in $RequiredFiles) {
-    if (-not (Test-Path (Join-Path $dist $f))) { Fail "A compilação não gerou $f." }
+    if (-not (Test-Path (Join-Path $dist $f))) { Fail (T "The build didn't create $f." "A compilação não gerou $f.") }
 }
-Ok "Vencord compilado em $dist"
+Ok ((T "Vencord built in" "Vencord compilado em") + " $dist")
 
 if ($SkipVesktop) {
     Write-Host ""
-    Ok "Pronto (o Vesktop não foi alterado por causa do -SkipVesktop)."
+    Ok (T "Done (Vesktop was not changed because of -SkipVesktop)." "Pronto (o Vesktop não foi alterado por causa do -SkipVesktop).")
     exit 0
 }
 
 # ---------------------------------------------------------------------------
-Step 5 "Procurando o Vesktop"
+Step 5 (T "Looking for Vesktop" "Procurando o Vesktop")
 
 $found = Get-VesktopDataDirs
 if ($found.DataDirs.Count -eq 0) {
-    Warn "Não encontrei o Vesktop neste computador."
-    Write-Host "   Configure manualmente: Vesktop > Configurações > Vesktop > Open Developer Settings"
-    Write-Host "   > Vencord Location > escolha a pasta: $dist"
+    Warn (T "Couldn't find Vesktop on this computer." "Não encontrei o Vesktop neste computador.")
+    Write-Host ("   " + (T "Set it up manually: Vesktop > Settings > Vesktop > Open Developer Settings" "Configure manualmente: Vesktop > Configurações > Vesktop > Open Developer Settings"))
+    Write-Host ("   " + (T "> Vencord Location > pick the folder" "> Vencord Location > escolha a pasta") + ": $dist")
     exit 0
 }
-foreach ($d in $found.DataDirs) { Ok "Configurações em $d" }
+foreach ($d in $found.DataDirs) { Ok ((T "Settings in" "Configurações em") + " $d") }
 
 $running = Get-Process -Name vesktop -ErrorAction SilentlyContinue
 if ($running) {
-    Write-Host "   O Vesktop está aberto e precisa ser fechado para mudar a configuração."
-    if (-not (Ask "Fechar o Vesktop agora?")) {
-        Write-Host "   Feche o Vesktop (ícone perto do relógio > Sair) e rode o instalador de novo."
+    Write-Host ("   " + (T "Vesktop is open and needs to be closed to change its settings." "O Vesktop está aberto e precisa ser fechado para mudar a configuração."))
+    if (-not (Ask (T "Close Vesktop now?" "Fechar o Vesktop agora?"))) {
+        Write-Host ("   " + (T "Close Vesktop (tray icon near the clock > Quit) and run the installer again." "Feche o Vesktop (ícone perto do relógio > Sair) e rode o instalador de novo."))
         exit 0
     }
     $running | Stop-Process -Force
     $running | Wait-Process -Timeout 15 -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 500
-    Ok "Vesktop fechado"
+    Ok (T "Vesktop closed" "Vesktop fechado")
 }
 
 # ---------------------------------------------------------------------------
-Step 6 "Apontando o Vesktop para o Vencord com o plugin"
+Step 6 (T "Pointing Vesktop to Vencord with the plugin" "Apontando o Vesktop para o Vencord com o plugin")
 
 foreach ($d in $found.DataDirs) {
     Set-VencordLocation $d $dist
@@ -255,20 +276,20 @@ foreach ($d in $found.DataDirs) {
 }
 
 # ---------------------------------------------------------------------------
-Step 7 "Finalizando"
+Step 7 (T "Finishing" "Finalizando")
 
 $exe = @($running | ForEach-Object Path) + $found.Exes | Where-Object { $_ } | Select-Object -First 1
-if ($exe -and (Ask "Abrir o Vesktop agora?")) {
+if ($exe -and (Ask (T "Open Vesktop now?" "Abrir o Vesktop agora?"))) {
     Start-Process $exe
-    Ok "Vesktop aberto"
+    Ok (T "Vesktop opened" "Vesktop aberto")
 }
 
 Write-Host ""
 Write-Host "  ==============================================" -ForegroundColor Green
-Write-Host "    Instalado!" -ForegroundColor Green
+Write-Host ("    " + (T "Installed!" "Instalado!")) -ForegroundColor Green
 Write-Host "  ==============================================" -ForegroundColor Green
-Write-Host "   Agora no Vesktop: Configurações > Vencord > Plugins"
-Write-Host "   procure BadgesPlus e ative."
+Write-Host ("   " + (T "Now in Vesktop: Settings > Vencord > Plugins" "Agora no Vesktop: Configurações > Vencord > Plugins"))
+Write-Host ("   " + (T "search for BadgesPlus and enable it." "procure BadgesPlus e ative."))
 Write-Host ""
-Write-Host "   Para atualizar no futuro, é só rodar este instalador de novo."
+Write-Host ("   " + (T "To update later, just run this installer again." "Para atualizar no futuro, é só rodar este instalador de novo."))
 Write-Host ""

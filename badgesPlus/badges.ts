@@ -6,6 +6,7 @@
 
 import { User } from "@vencord/discord-types";
 
+import { plural, t } from "./i18n";
 import { settings } from "./settings";
 
 export interface SimpleBadge {
@@ -16,8 +17,9 @@ export interface SimpleBadge {
 
 export const badgeIconUrl = (icon: string) => `https://cdn.discordapp.com/badge-icons/${icon}.png`;
 
-// Badges que dá pra descobrir só pelas flags públicas do usuário, sem buscar o perfil.
-// Nitro e impulso de servidor só aparecem quando o perfil completo é carregado.
+// Badges que dá pra descobrir só pelas flags públicas, sem buscar o perfil.
+// Badges that can be read from public flags alone, without fetching the profile.
+// Nitro/boost only show up once the full profile is loaded.
 const FLAG_BADGES: Array<SimpleBadge & { flag: number; }> = [
     { flag: 1 << 0, id: "staff", description: "Discord Staff", icon: "5e74e9b61934fc1f67c65515d1f7e60d" },
     { flag: 1 << 1, id: "partner", description: "Partnered Server Owner", icon: "3f9748e53446a137a052f3454e2de41e" },
@@ -38,33 +40,39 @@ export function getFlagBadges(user: User): SimpleBadge[] {
     return FLAG_BADGES.filter(b => (flags & b.flag) === b.flag);
 }
 
-// ---- Nomes em português ------------------------------------------------------
+// ---- Nomes / Names -----------------------------------------------------------
 
-const LABELS: Record<string, string> = {
-    premium: "Nitro",
-    staff: "Funcionário do Discord",
-    partner: "Parceiro",
-    certified_moderator: "Ex-moderador",
-    hypesquad: "HypeSquad Eventos",
-    hypesquad_house_1: "HypeSquad Bravery",
-    hypesquad_house_2: "HypeSquad Brilliance",
-    hypesquad_house_3: "HypeSquad Balance",
-    bug_hunter_level_1: "Caçador de Bugs",
-    bug_hunter_level_2: "Caçador de Bugs Nível 2",
-    active_developer: "Desenvolvedor Ativo",
-    verified_developer: "Dev de Bot Verificado",
-    early_supporter: "Apoiador Inicial",
-    legacy_username: "Nome antigo",
-    quest_completed: "Missão concluída",
-    orb_profile_badge: "Orbs",
-    bot_commands: "Comandos de bot",
-    automod: "AutoMod",
-    application_guild_subscription: "Assinatura de app",
+const LABELS: Record<string, [en: string, pt: string]> = {
+    premium: ["Nitro", "Nitro"],
+    staff: ["Discord Staff", "Funcionário do Discord"],
+    partner: ["Partner", "Parceiro"],
+    certified_moderator: ["Moderator Alumni", "Ex-moderador"],
+    hypesquad: ["HypeSquad Events", "HypeSquad Eventos"],
+    hypesquad_house_1: ["HypeSquad Bravery", "HypeSquad Bravery"],
+    hypesquad_house_2: ["HypeSquad Brilliance", "HypeSquad Brilliance"],
+    hypesquad_house_3: ["HypeSquad Balance", "HypeSquad Balance"],
+    bug_hunter_level_1: ["Bug Hunter", "Caçador de Bugs"],
+    bug_hunter_level_2: ["Bug Hunter Level 2", "Caçador de Bugs Nível 2"],
+    active_developer: ["Active Developer", "Desenvolvedor Ativo"],
+    verified_developer: ["Verified Bot Developer", "Dev de Bot Verificado"],
+    early_supporter: ["Early Supporter", "Apoiador Inicial"],
+    legacy_username: ["Originally known as", "Nome antigo"],
+    quest_completed: ["Completed a Quest", "Missão concluída"],
+    orb_profile_badge: ["Orbs", "Orbs"],
+    bot_commands: ["Supports Commands", "Comandos de bot"],
+    automod: ["AutoMod", "AutoMod"],
+    application_guild_subscription: ["App subscription", "Assinatura de app"],
 };
 
-const TENURE: Record<number, string> = {
-    1: "Bronze", 3: "Prata", 6: "Ouro", 12: "Platina",
-    24: "Diamante", 36: "Esmeralda", 60: "Rubi", 72: "Opala",
+const TENURE: Record<number, [en: string, pt: string]> = {
+    1: ["Bronze", "Bronze"],
+    3: ["Silver", "Prata"],
+    6: ["Gold", "Ouro"],
+    12: ["Platinum", "Platina"],
+    24: ["Diamond", "Diamante"],
+    36: ["Emerald", "Esmeralda"],
+    60: ["Ruby", "Rubi"],
+    72: ["Opal", "Opala"],
 };
 
 const BOOST_MONTHS = [0, 1, 2, 3, 6, 9, 12, 15, 18, 24];
@@ -72,27 +80,30 @@ const BOOST_MONTHS = [0, 1, 2, 3, 6, 9, 12, 15, 18, 24];
 const tenureMonths = (id: string) => Number(/^premium_tenure_(\d+)_month/.exec(id)?.[1] ?? NaN);
 const boostLevel = (id: string) => Number(/^guild_booster_lvl(\d+)/.exec(id)?.[1] ?? NaN);
 
-/** Nome curto da badge em português */
+/** Nome curto da badge / Short badge name */
 export function getBadgeLabel(badge: SimpleBadge): string {
-    if (LABELS[badge.id]) return LABELS[badge.id];
+    if (LABELS[badge.id]) return t(...LABELS[badge.id]);
 
     const months = tenureMonths(badge.id);
-    if (!isNaN(months)) return `Nitro ${TENURE[months] ?? `${months} meses`}`;
+    if (!isNaN(months)) {
+        const tier = TENURE[months] ? t(...TENURE[months]) : plural(months, "month", "months", "mês", "meses");
+        return `Nitro ${tier}`;
+    }
 
     const lvl = boostLevel(badge.id);
     if (!isNaN(lvl)) {
         const m = BOOST_MONTHS[lvl] ?? lvl;
-        return `Impulso ${m} ${m === 1 ? "mês" : "meses"}`;
+        return `${t("Boost", "Impulso")} ${plural(m, "month", "months", "mês", "meses")}`;
     }
 
-    // badge nova que ainda não está aqui: usa o texto que o Discord manda
+    // badge nova / new badge: usa o texto do Discord / use Discord's text
     return badge.description;
 }
 
 export const getTooltip = (badge: SimpleBadge) =>
     settings.store.tooltipText === "discord" ? badge.description : getBadgeLabel(badge);
 
-// ---- Categorias (para os filtros das configurações) ----------------------------
+// ---- Categorias / Categories ------------------------------------------------
 
 type Category = "nitro" | "boost" | "hypesquad" | "programs" | "legacy" | "quests" | "other";
 
@@ -125,11 +136,11 @@ const CATEGORY_SETTING = {
 export const isCategoryEnabled = (badge: SimpleBadge) =>
     settings.store[CATEGORY_SETTING[getCategory(badge)]];
 
-// ---- Ordem -------------------------------------------------------------------
+// ---- Ordem / Order ---------------------------------------------------------
 
 const isNitroOrBoost = (b: SimpleBadge) => ["nitro", "boost"].includes(getCategory(b));
 
-/** Aplica os filtros e a ordem escolhidos nas configurações */
+/** Aplica filtros e ordem das configurações / Applies the filters and order from settings */
 export function filterAndSortBadges(badges: SimpleBadge[]): SimpleBadge[] {
     const visible = badges.filter(isCategoryEnabled);
 
@@ -143,7 +154,7 @@ export function filterAndSortBadges(badges: SimpleBadge[]): SimpleBadge[] {
     }
 }
 
-/** Ordem dos botões no pesquisador: Nitro, níveis de Nitro, impulsos e o resto */
+/** Ordem dos botões no pesquisador / Button order in the search: Nitro, tiers, boosts, rest */
 export function badgeSortRank(badge: SimpleBadge): number {
     if (badge.id === "premium") return 0;
     const months = tenureMonths(badge.id);

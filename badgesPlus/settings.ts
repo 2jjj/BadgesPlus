@@ -7,212 +7,234 @@
 import { definePluginSettings } from "@api/Settings";
 import { OptionType } from "@utils/types";
 
+import { t } from "./i18n";
 import { setMinDelay } from "./profileQueue";
 
+/**
+ * Adiciona nome e descrição traduzidos. São getters para que a tela de configurações
+ * mostre o idioma atual sempre que for aberta.
+ * Adds translated name and description as getters, so the settings screen always
+ * shows the current language.
+ */
+function tr<const T extends object>(def: T, name: [en: string, pt: string], desc: [en: string, pt: string]) {
+    return Object.defineProperties(def, {
+        displayName: { get: () => t(...name), enumerable: true },
+        description: { get: () => t(...desc), enumerable: true },
+    }) as T & { displayName: string; description: string; };
+}
+
 export const settings = definePluginSettings({
-    // ---- Onde mostrar --------------------------------------------------------
-    showInChat: {
-        type: OptionType.BOOLEAN,
-        displayName: "Mostrar no chat",
-        description: "Mostra as badges logo depois do nome nas mensagens.",
-        default: true
-    },
-    showInMemberList: {
-        type: OptionType.BOOLEAN,
-        displayName: "Mostrar na lista de membros",
-        description: "Mostra as badges logo depois do nome na lista de membros (servidores e DMs).",
-        default: true
-    },
-    showOnSelf: {
-        type: OptionType.BOOLEAN,
-        displayName: "Mostrar as minhas badges",
-        description: "Mostra as badges na sua própria conta também.",
-        default: true
-    },
-    showOnBots: {
-        type: OptionType.BOOLEAN,
-        displayName: "Mostrar em bots",
-        description: "Mostra badges em bots (ex.: Comandos de bot, AutoMod).",
-        default: false
-    },
-
-    // ---- Aparência -----------------------------------------------------------
-    chatBadgeSize: {
-        type: OptionType.SLIDER,
-        displayName: "Tamanho no chat",
-        description: "Tamanho das badges no chat, em pixels.",
-        markers: [12, 14, 16, 18, 20, 22, 24],
-        default: 18,
-        stickToMarkers: true
-    },
-    memberListBadgeSize: {
-        type: OptionType.SLIDER,
-        displayName: "Tamanho na lista de membros",
-        description: "Tamanho das badges na lista de membros, em pixels.",
-        markers: [12, 14, 16, 18, 20, 22, 24],
-        default: 16,
-        stickToMarkers: true
-    },
-    badgeSpacing: {
-        type: OptionType.SLIDER,
-        displayName: "Espaço entre badges",
-        description: "Espaço entre uma badge e outra, em pixels.",
-        markers: [0, 1, 2, 3, 4, 6, 8],
-        default: 3,
-        stickToMarkers: true
-    },
-    maxBadges: {
-        type: OptionType.SLIDER,
-        displayName: "Máximo de badges por pessoa",
-        description: "Quantas badges mostrar ao lado do nome. 0 = todas.",
-        markers: [0, 1, 2, 3, 4, 5, 6, 8, 10],
-        default: 0,
-        stickToMarkers: true
-    },
-    showOverflowCount: {
-        type: OptionType.BOOLEAN,
-        displayName: "Mostrar \"+N\" quando passar do máximo",
-        description: "Mostra quantas badges ficaram escondidas pelo limite acima.",
-        default: true
-    },
-    badgeOrder: {
+    language: {
         type: OptionType.SELECT,
-        displayName: "Ordem das badges",
-        description: "Em que ordem as badges aparecem ao lado do nome.",
+        displayName: "Language / Idioma",
+        description: "Language of the plugin. / Idioma do plugin.",
         options: [
-            { label: "Igual ao perfil do Discord", value: "discord", default: true },
-            { label: "Nitro e impulso primeiro", value: "nitroFirst" },
-            { label: "Nitro e impulso por último", value: "nitroLast" },
-        ]
-    },
-    tooltipText: {
-        type: OptionType.SELECT,
-        displayName: "Texto ao passar o mouse",
-        description: "O que aparece quando você passa o mouse em cima de uma badge.",
-        options: [
-            { label: "Nome curto (ex.: Nitro Opala)", value: "label", default: true },
-            { label: "Texto do Discord (ex.: Assinante desde...)", value: "discord" },
+            { label: "Auto (Discord)", value: "auto", default: true },
+            { label: "English", value: "en" },
+            { label: "Português", value: "pt" },
         ]
     },
 
-    // ---- Quais badges mostrar ------------------------------------------------
-    showNitro: {
-        type: OptionType.BOOLEAN,
-        displayName: "Badges de Nitro",
-        description: "Nitro e níveis de Nitro (Bronze, Prata, Ouro... Opala).",
-        default: true
-    },
-    showBoost: {
-        type: OptionType.BOOLEAN,
-        displayName: "Badges de impulso",
-        description: "Impulso de servidor (1 mês até 24 meses).",
-        default: true
-    },
-    showHypeSquad: {
-        type: OptionType.BOOLEAN,
-        displayName: "Badges da HypeSquad",
-        description: "Bravery, Brilliance, Balance e HypeSquad Eventos.",
-        default: true
-    },
-    showDiscordPrograms: {
-        type: OptionType.BOOLEAN,
-        displayName: "Badges de programas do Discord",
-        description: "Funcionário, Parceiro, Caçador de Bugs, Ex-moderador, Apoiador Inicial, Desenvolvedor Ativo, Dev de Bot Verificado.",
-        default: true
-    },
-    showLegacyUsername: {
-        type: OptionType.BOOLEAN,
-        displayName: "Badge \"Nome antigo\"",
-        description: "A badge de quem tinha nome com #tag antes da mudança de nomes.",
-        default: true
-    },
-    showQuests: {
-        type: OptionType.BOOLEAN,
-        displayName: "Badges de missões e Orbs",
-        description: "Missão concluída, Orbs e similares.",
-        default: true
-    },
-    showOther: {
-        type: OptionType.BOOLEAN,
-        displayName: "Outras badges",
-        description: "Qualquer badge que não se encaixe nas categorias acima (inclusive badges novas do Discord).",
-        default: true
-    },
+    // ---- Where to show / Onde mostrar -----------------------------------------
+    showInChat: tr(
+        { type: OptionType.BOOLEAN, default: true },
+        ["Show in chat", "Mostrar no chat"],
+        ["Shows badges right after the name in messages.", "Mostra as badges logo depois do nome nas mensagens."]
+    ),
+    showInMemberList: tr(
+        { type: OptionType.BOOLEAN, default: true },
+        ["Show in member list", "Mostrar na lista de membros"],
+        ["Shows badges right after the name in the member list (servers and DMs).", "Mostra as badges logo depois do nome na lista de membros (servidores e DMs)."]
+    ),
+    showOnSelf: tr(
+        { type: OptionType.BOOLEAN, default: true },
+        ["Show my own badges", "Mostrar as minhas badges"],
+        ["Also shows badges on your own account.", "Mostra as badges na sua própria conta também."]
+    ),
+    showOnBots: tr(
+        { type: OptionType.BOOLEAN, default: false },
+        ["Show on bots", "Mostrar em bots"],
+        ["Shows badges on bots (e.g. Supports Commands, AutoMod).", "Mostra badges em bots (ex.: Comandos de bot, AutoMod)."]
+    ),
 
-    // ---- Carregamento --------------------------------------------------------
-    fetchProfiles: {
-        type: OptionType.BOOLEAN,
-        displayName: "Carregar perfis automaticamente",
-        description: "Busca o perfil de quem aparece na tela para descobrir Nitro, impulso e outras badges que não vêm junto com o usuário. Sem isso, só aparecem as badges básicas (HypeSquad, Caçador de Bugs, Apoiador Inicial...).",
-        default: true
-    },
-    loadSpeed: {
-        type: OptionType.SELECT,
-        displayName: "Velocidade de carregamento",
-        description: "Intervalo entre um perfil e outro. Se o Discord pedir para ir mais devagar, o plugin desacelera sozinho e depois volta a acelerar.",
-        options: [
-            { label: "Rápido (0,5s)", value: 500, default: true },
-            { label: "Normal (1s)", value: 1000 },
-            { label: "Seguro (2s)", value: 2000 },
-            { label: "Muito seguro (4s)", value: 4000 },
-        ],
-        onChange: (ms: number) => setMinDelay(ms)
-    },
-    fetchBotProfiles: {
-        type: OptionType.BOOLEAN,
-        displayName: "Carregar perfil de bots",
-        description: "Também busca o perfil de bots. Deixe desligado para economizar requisições.",
-        default: false
-    },
+    // ---- Appearance / Aparência -----------------------------------------------
+    chatBadgeSize: tr(
+        { type: OptionType.SLIDER, markers: [12, 14, 16, 18, 20, 22, 24], default: 18, stickToMarkers: true },
+        ["Size in chat", "Tamanho no chat"],
+        ["Badge size in chat, in pixels.", "Tamanho das badges no chat, em pixels."]
+    ),
+    memberListBadgeSize: tr(
+        { type: OptionType.SLIDER, markers: [12, 14, 16, 18, 20, 22, 24], default: 16, stickToMarkers: true },
+        ["Size in member list", "Tamanho na lista de membros"],
+        ["Badge size in the member list, in pixels.", "Tamanho das badges na lista de membros, em pixels."]
+    ),
+    badgeSpacing: tr(
+        { type: OptionType.SLIDER, markers: [0, 1, 2, 3, 4, 6, 8], default: 3, stickToMarkers: true },
+        ["Space between badges", "Espaço entre badges"],
+        ["Space between one badge and the next, in pixels.", "Espaço entre uma badge e outra, em pixels."]
+    ),
+    maxBadges: tr(
+        { type: OptionType.SLIDER, markers: [0, 1, 2, 3, 4, 5, 6, 8, 10], default: 0, stickToMarkers: true },
+        ["Max badges per person", "Máximo de badges por pessoa"],
+        ["How many badges to show next to the name. 0 = all.", "Quantas badges mostrar ao lado do nome. 0 = todas."]
+    ),
+    showOverflowCount: tr(
+        { type: OptionType.BOOLEAN, default: true },
+        ["Show \"+N\" when over the limit", "Mostrar \"+N\" quando passar do máximo"],
+        ["Shows how many badges were hidden by the limit above.", "Mostra quantas badges ficaram escondidas pelo limite acima."]
+    ),
+    badgeOrder: tr(
+        {
+            type: OptionType.SELECT,
+            get options() {
+                return [
+                    { label: t("Same as the Discord profile", "Igual ao perfil do Discord"), value: "discord", default: true },
+                    { label: t("Nitro and boost first", "Nitro e impulso primeiro"), value: "nitroFirst" },
+                    { label: t("Nitro and boost last", "Nitro e impulso por último"), value: "nitroLast" },
+                ];
+            }
+        },
+        ["Badge order", "Ordem das badges"],
+        ["In which order badges appear next to the name.", "Em que ordem as badges aparecem ao lado do nome."]
+    ),
+    tooltipText: tr(
+        {
+            type: OptionType.SELECT,
+            get options() {
+                return [
+                    { label: t("Short name (e.g. Nitro Opal)", "Nome curto (ex.: Nitro Opala)"), value: "label", default: true },
+                    { label: t("Discord's text (e.g. Subscriber since...)", "Texto do Discord (ex.: Assinante desde...)"), value: "discord" },
+                ];
+            }
+        },
+        ["Hover text", "Texto ao passar o mouse"],
+        ["What shows up when you hover over a badge.", "O que aparece quando você passa o mouse em cima de uma badge."]
+    ),
 
-    // ---- Pesquisa de badges ----------------------------------------------------
-    showSearchButton: {
-        type: OptionType.BOOLEAN,
-        displayName: "Botão de pesquisar badges",
-        description: "Mostra o botão de Nitro na barra do canal (perto de fixados e lista de membros) para pesquisar membros por badge.",
-        default: true
-    },
-    searchMatchMode: {
-        type: OptionType.SELECT,
-        displayName: "Com várias badges selecionadas, mostrar quem tem...",
-        description: "Como combinar as badges selecionadas no pesquisador.",
-        options: [
-            { label: "TODAS as selecionadas", value: "all", default: true },
-            { label: "QUALQUER UMA das selecionadas", value: "any" },
+    // ---- Which badges / Quais badges ------------------------------------------
+    showNitro: tr(
+        { type: OptionType.BOOLEAN, default: true },
+        ["Nitro badges", "Badges de Nitro"],
+        ["Nitro and Nitro tiers (Bronze, Silver, Gold... Opal).", "Nitro e níveis de Nitro (Bronze, Prata, Ouro... Opala)."]
+    ),
+    showBoost: tr(
+        { type: OptionType.BOOLEAN, default: true },
+        ["Boost badges", "Badges de impulso"],
+        ["Server boost (1 month up to 24 months).", "Impulso de servidor (1 mês até 24 meses)."]
+    ),
+    showHypeSquad: tr(
+        { type: OptionType.BOOLEAN, default: true },
+        ["HypeSquad badges", "Badges da HypeSquad"],
+        ["Bravery, Brilliance, Balance and HypeSquad Events.", "Bravery, Brilliance, Balance e HypeSquad Eventos."]
+    ),
+    showDiscordPrograms: tr(
+        { type: OptionType.BOOLEAN, default: true },
+        ["Discord program badges", "Badges de programas do Discord"],
+        [
+            "Staff, Partner, Bug Hunter, Moderator Alumni, Early Supporter, Active Developer, Verified Bot Developer.",
+            "Funcionário, Parceiro, Caçador de Bugs, Ex-moderador, Apoiador Inicial, Desenvolvedor Ativo, Dev de Bot Verificado."
         ]
-    },
-    searchAutoLoad: {
-        type: OptionType.BOOLEAN,
-        displayName: "Carregar badges ao abrir o pesquisador",
-        description: "Começa a carregar as badges de todos os membros assim que o pesquisador abre, sem precisar clicar em \"Carregar\".",
-        default: false
-    },
-    searchShowMessageButton: {
-        type: OptionType.BOOLEAN,
-        displayName: "Botão de mensagem nos resultados",
-        description: "Mostra o botão que abre a DM com a pessoa.",
-        default: true
-    },
-    searchCloseOnMessage: {
-        type: OptionType.BOOLEAN,
-        displayName: "Fechar o pesquisador ao abrir DM",
-        description: "Fecha o pesquisador quando você clica para mandar mensagem.",
-        default: true
-    },
-    searchIncludeBots: {
-        type: OptionType.BOOLEAN,
-        displayName: "Incluir bots na pesquisa",
-        description: "Mostra bots nos resultados e na contagem das badges.",
-        default: false
-    },
-    searchMaxResults: {
-        type: OptionType.SLIDER,
-        displayName: "Máximo de resultados",
-        description: "Quantas pessoas mostrar de uma vez no pesquisador.",
-        markers: [50, 100, 200, 300, 500, 1000],
-        default: 300,
-        stickToMarkers: true
-    },
+    ),
+    showLegacyUsername: tr(
+        { type: OptionType.BOOLEAN, default: true },
+        ["\"Originally known as\" badge", "Badge \"Nome antigo\""],
+        ["The badge for people who had a #tag name before the username change.", "A badge de quem tinha nome com #tag antes da mudança de nomes."]
+    ),
+    showQuests: tr(
+        { type: OptionType.BOOLEAN, default: true },
+        ["Quest and Orbs badges", "Badges de missões e Orbs"],
+        ["Completed a Quest, Orbs and similar.", "Missão concluída, Orbs e similares."]
+    ),
+    showOther: tr(
+        { type: OptionType.BOOLEAN, default: true },
+        ["Other badges", "Outras badges"],
+        ["Any badge that doesn't fit the categories above (including new Discord badges).", "Qualquer badge que não se encaixe nas categorias acima (inclusive badges novas do Discord)."]
+    ),
+
+    // ---- Loading / Carregamento -----------------------------------------------
+    fetchProfiles: tr(
+        { type: OptionType.BOOLEAN, default: true },
+        ["Load profiles automatically", "Carregar perfis automaticamente"],
+        [
+            "Fetches the profile of whoever is on screen to find Nitro, boost and other badges that don't come with the user. Without it, only basic badges show up (HypeSquad, Bug Hunter, Early Supporter...).",
+            "Busca o perfil de quem aparece na tela para descobrir Nitro, impulso e outras badges que não vêm junto com o usuário. Sem isso, só aparecem as badges básicas (HypeSquad, Caçador de Bugs, Apoiador Inicial...)."
+        ]
+    ),
+    loadSpeed: tr(
+        {
+            type: OptionType.SELECT,
+            get options() {
+                return [
+                    { label: t("Fast (0.5s)", "Rápido (0,5s)"), value: 500, default: true },
+                    { label: t("Normal (1s)", "Normal (1s)"), value: 1000 },
+                    { label: t("Safe (2s)", "Seguro (2s)"), value: 2000 },
+                    { label: t("Very safe (4s)", "Muito seguro (4s)"), value: 4000 },
+                ];
+            },
+            onChange: (ms: number) => setMinDelay(ms)
+        },
+        ["Loading speed", "Velocidade de carregamento"],
+        [
+            "Time between one profile and the next. If Discord asks to slow down, the plugin slows down by itself and speeds up again later.",
+            "Intervalo entre um perfil e outro. Se o Discord pedir para ir mais devagar, o plugin desacelera sozinho e depois volta a acelerar."
+        ]
+    ),
+    fetchBotProfiles: tr(
+        { type: OptionType.BOOLEAN, default: false },
+        ["Load bot profiles", "Carregar perfil de bots"],
+        ["Also fetches bot profiles. Leave off to save requests.", "Também busca o perfil de bots. Deixe desligado para economizar requisições."]
+    ),
+
+    // ---- Badge search / Pesquisa de badges ------------------------------------
+    showSearchButton: tr(
+        { type: OptionType.BOOLEAN, default: true },
+        ["Badge search button", "Botão de pesquisar badges"],
+        [
+            "Shows the Nitro button in the channel bar (next to pins and member list) to search members by badge.",
+            "Mostra o botão de Nitro na barra do canal (perto de fixados e lista de membros) para pesquisar membros por badge."
+        ]
+    ),
+    searchMatchMode: tr(
+        {
+            type: OptionType.SELECT,
+            get options() {
+                return [
+                    { label: t("ALL selected badges", "TODAS as selecionadas"), value: "all", default: true },
+                    { label: t("ANY of the selected badges", "QUALQUER UMA das selecionadas"), value: "any" },
+                ];
+            }
+        },
+        ["With several badges selected, show who has...", "Com várias badges selecionadas, mostrar quem tem..."],
+        ["How to combine the selected badges in the search.", "Como combinar as badges selecionadas no pesquisador."]
+    ),
+    searchAutoLoad: tr(
+        { type: OptionType.BOOLEAN, default: false },
+        ["Load badges when opening the search", "Carregar badges ao abrir o pesquisador"],
+        [
+            "Starts loading every member's badges as soon as the search opens, without clicking \"Load\".",
+            "Começa a carregar as badges de todos os membros assim que o pesquisador abre, sem precisar clicar em \"Carregar\"."
+        ]
+    ),
+    searchShowMessageButton: tr(
+        { type: OptionType.BOOLEAN, default: true },
+        ["Message button in results", "Botão de mensagem nos resultados"],
+        ["Shows the button that opens a DM with the person.", "Mostra o botão que abre a DM com a pessoa."]
+    ),
+    searchCloseOnMessage: tr(
+        { type: OptionType.BOOLEAN, default: true },
+        ["Close the search when opening a DM", "Fechar o pesquisador ao abrir DM"],
+        ["Closes the search when you click to send a message.", "Fecha o pesquisador quando você clica para mandar mensagem."]
+    ),
+    searchIncludeBots: tr(
+        { type: OptionType.BOOLEAN, default: false },
+        ["Include bots in the search", "Incluir bots na pesquisa"],
+        ["Shows bots in the results and in the badge counts.", "Mostra bots nos resultados e na contagem das badges."]
+    ),
+    searchMaxResults: tr(
+        { type: OptionType.SLIDER, markers: [50, 100, 200, 300, 500, 1000], default: 300, stickToMarkers: true },
+        ["Max results", "Máximo de resultados"],
+        ["How many people to show at once in the search.", "Quantas pessoas mostrar de uma vez no pesquisador."]
+    ),
 }, {
     chatBadgeSize: { hidden() { return !this.store.showInChat; } },
     memberListBadgeSize: { hidden() { return !this.store.showInMemberList; } },

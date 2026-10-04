@@ -9,10 +9,12 @@ import { Logger } from "@utils/Logger";
 import { FluxDispatcher, UserProfileStore } from "@webpack/common";
 
 // Fila única de busca de perfis, usada pelas badges ao lado do nome e pelo pesquisador.
+// Single profile fetch queue, shared by the name badges and the badge search.
 //
-// Velocidade adaptativa: começa no intervalo mínimo escolhido nas configurações e,
-// se o Discord responder 429 (muitas requisições), espera o tempo pedido e
-// desacelera. Depois de uma sequência de sucessos, volta a acelerar aos poucos.
+// Velocidade adaptativa: começa no intervalo mínimo das configurações; se o Discord
+// responder 429, espera o tempo pedido e desacelera. Após vários sucessos, acelera de novo.
+// Adaptive speed: starts at the minimum interval from settings; on a 429 it waits as
+// requested and slows down. After a streak of successes it speeds up again.
 
 const logger = new Logger("BadgesPlus");
 
@@ -37,7 +39,7 @@ export function setMinDelay(ms: number) {
     delay = Math.max(delay, ms);
 }
 
-/** true se o perfil já está carregado ou já falhou (ex.: conta apagada) */
+/** Perfil já carregado ou falhou (ex.: conta apagada) / Profile already loaded or failed (e.g. deleted account) */
 export const isDone = (id: string) => failed.has(id) || !!UserProfileStore.getUserProfile(id);
 
 export const pendingCount = () => queue.length;
@@ -48,8 +50,8 @@ export function onQueueChange(listener: () => void) {
 }
 
 /**
- * Coloca perfis na fila.
- * @param front true = passa na frente (quem está aparecendo na tela agora)
+ * Coloca perfis na fila / Queues profiles.
+ * @param front true = passa na frente (quem está na tela) / jumps the queue (who is on screen)
  */
 export function queueProfiles(ids: string[], front = false) {
     for (const id of ids) {
@@ -87,14 +89,14 @@ async function run() {
                     delay = Math.max(minDelay, Math.round(delay * 0.8));
                 }
             } catch (e: any) {
-                // evita deixar o Discord achando que o perfil ainda está carregando
+                // evita o Discord achar que ainda está carregando / so Discord doesn't think it's still loading
                 FluxDispatcher.dispatch({ type: "USER_PROFILE_FETCH_FAILURE", userId: id });
                 streak = 0;
 
                 if (e?.status === 429) {
                     const retryAfter = Number(e?.body?.retry_after) || 5;
                     delay = Math.min(MAX_DELAY, Math.round(delay * 1.5) + 250);
-                    logger.warn(`Rate limit: esperando ${retryAfter}s, novo intervalo ${delay}ms`);
+                    logger.warn(`Rate limited: waiting ${retryAfter}s, new interval ${delay}ms`);
                     queued.add(id);
                     queue.unshift(id);
                     notify();

@@ -1,95 +1,110 @@
 # BadgesPlus
 
-Plugin para o **[Vesktop](https://github.com/Vencord/Vesktop)** (e Vencord) que mostra as badges do perfil das pessoas **sem precisar abrir o perfil** e permite **pesquisar membros do servidor por badge**.
+**🇺🇸 English** · [🇧🇷 Português](README.pt-BR.md)
 
-- Badges logo depois do nome, **no chat e na lista de membros**
-- Pesquisador de badges: encontre quem tem **Nitro Opala**, **Apoiador Inicial**, **Impulso 24 meses**, **HypeSquad**... e mande mensagem direto
-- Mais de 25 configurações: tamanho, espaçamento, limite, ordem, quais badges mostrar, velocidade de carregamento e mais
-- Instalador automático para Windows
+A plugin for **[Vesktop](https://github.com/Vencord/Vesktop)** (and Vencord) that shows people's profile badges **without opening their profile** and lets you **search server members by badge**.
+
+- Badges right after the name, **in chat and in the member list**
+- Badge search: find who has **Nitro Opal**, **Early Supporter**, **24-month Boost**, **HypeSquad**... and message them directly
+- 29 settings: size, spacing, limit, order, which badges to show, loading speed and more
+- **English and Portuguese**: follows Discord's language, or pick one in the settings
+- Automatic installer for Windows
 
 ---
 
-## Instalação automática (Windows)
+## Automatic install (Windows)
 
-1. Clique em **Code → Download ZIP** nesta página e extraia o zip.
-2. Dê dois cliques em **`instalar.bat`**.
-3. Responda **S** quando ele perguntar alguma coisa.
-4. No Vesktop, vá em **Configurações → Vencord → Plugins**, procure **BadgesPlus** e ative.
+1. Click **Code → Download ZIP** on this page and extract the zip.
+2. Double-click **`install.bat`**.
+3. Answer **Y** when it asks something.
+4. In Vesktop, go to **Settings → Vencord → Plugins**, search for **BadgesPlus** and enable it.
 
-O instalador faz tudo sozinho:
+The installer does everything by itself, in English or Portuguese depending on your Windows language:
 
-| Etapa | O que acontece |
+| Step | What happens |
 |---|---|
-| 1 | Confere se você tem **Git**, **Node.js** e **pnpm**. Se faltar algum, oferece instalar pelo `winget` |
-| 2 | Baixa o código do Vencord em `Documentos\Vencord` (ou atualiza, se já existir) |
-| 3 | Copia o plugin para `Documentos\Vencord\src\userplugins\badgesPlus` |
-| 4 | Compila o Vencord com o plugin |
-| 5 | Encontra o Vesktop (instalado ou portátil) e fecha ele, se estiver aberto |
-| 6 | Configura o **Vencord Location** do Vesktop para a pasta compilada |
-| 7 | Abre o Vesktop de novo |
+| 1 | Checks that you have **Git**, **Node.js** and **pnpm**. If something is missing, offers to install it with `winget` |
+| 2 | Downloads the Vencord source into `Documents\Vencord` (or updates it, if it's already there) |
+| 3 | Copies the plugin into `Documents\Vencord\src\userplugins\badgesPlus` |
+| 4 | Builds Vencord with the plugin |
+| 5 | Finds Vesktop (installed or portable) and closes it, if it's open |
+| 6 | Sets Vesktop's **Vencord Location** to the built folder |
+| 7 | Opens Vesktop again |
 
-Antes de mudar a configuração do Vesktop, o instalador salva uma cópia dela como `state.json.bak`.
+Before changing Vesktop's settings, the installer saves a copy of them as `state.json.bak`.
 
-> O `instalar.bat` também funciona sozinho: se você baixar só ele, o instalador baixa o resto do GitHub.
+> `install.bat` also works on its own: if you download only that file, the installer downloads the rest from GitHub.
 
-### Atualizar
+### Update
 
-Rode o **`instalar.bat`** de novo. Ele atualiza o Vencord e o plugin e compila tudo outra vez.
+Run **`install.bat`** again. It updates Vencord and the plugin and builds everything again.
 
-> ⚠️ **Não use o botão de atualizar da aba "Updater" do Vencord.** Ele troca a sua versão compilada pela oficial, que não tem o plugin.
+> ⚠️ **Don't use the update button in Vencord's "Updater" tab.** It replaces your build with the official one, which doesn't have the plugin.
 
-### Desinstalar
+### Uninstall
 
-Rode o **`desinstalar.bat`**. O Vesktop volta a usar o Vencord oficial e o plugin é removido.
+Run **`uninstall.bat`**. Vesktop goes back to the official Vencord and the plugin is removed.
 
----
+### Installer options
 
-## Como usar
+Both scripts accept options, e.g. `install.bat -Lang en`:
 
-### Badges ao lado do nome
-
-Depois de ativar o plugin, as badges aparecem sozinhas no chat e na lista de membros. Passe o mouse em cima para ver o nome.
-
-- Badges como **HypeSquad, Caçador de Bugs, Apoiador Inicial e Desenvolvedor Ativo** aparecem na hora.
-- **Nitro e Impulso** só existem no perfil completo da pessoa. O plugin carrega os perfis em segundo plano, um de cada vez, começando por quem está na tela. Por isso elas vão aparecendo aos poucos.
-
-### Pesquisador de badges
-
-1. Entre em um canal de qualquer servidor.
-2. Clique no **ícone de Nitro** na barra do canal, ao lado de fixados e lista de membros.
-3. Aparecem botões com todas as badges do servidor e quantas pessoas têm cada uma.
-4. Clique numa badge para selecionar. Ela fica com **contorno verde** e aparece a lista de quem tem essa badge.
-5. Selecione várias para combinar. Por padrão aparece só quem tem **todas**; dá para trocar para **qualquer uma** nas configurações.
-6. Em cada pessoa do resultado:
-   - clique no **nome ou na foto** para abrir o perfil;
-   - clique no **balão de conversa** para abrir a DM com ela.
-
-**Dicas**
-
-- O Discord só carrega parte dos membros de servidores grandes. O pesquisador mostra "X membros carregados de Y". Rolar a lista de membros carrega mais gente.
-- O link **"Carregar badges de N membros"** busca o perfil de quem falta, para encontrar Nitro e Impulso. Você vê quantos faltam e pode clicar em **Parar** a qualquer momento.
-
----
-
-## Configurações
-
-Em **Configurações → Vencord → Plugins → BadgesPlus** (ícone de engrenagem). Tudo muda na hora, sem reiniciar.
-
-| Grupo | Opções |
+| Option | What it does |
 |---|---|
-| **Onde mostrar** | No chat · Na lista de membros · Nas suas próprias badges · Em bots |
-| **Aparência** | Tamanho no chat · Tamanho na lista de membros · Espaço entre badges · Máximo de badges por pessoa · Mostrar "+N" quando passar do máximo · Ordem (igual ao Discord / Nitro primeiro / Nitro por último) · Texto ao passar o mouse (nome curto ou texto do Discord) |
-| **Quais badges** | Nitro · Impulso · HypeSquad · Programas do Discord (Funcionário, Parceiro, Caçador de Bugs, Apoiador Inicial, Desenvolvedores...) · Nome antigo · Missões e Orbs · Outras |
-| **Carregamento** | Carregar perfis automaticamente · Velocidade (Rápido 0,5s / Normal 1s / Seguro 2s / Muito seguro 4s) · Carregar perfil de bots |
-| **Pesquisador** | Mostrar o botão · Combinar badges (todas / qualquer uma) · Carregar badges ao abrir · Botão de mensagem · Fechar o pesquisador ao abrir DM · Incluir bots · Máximo de resultados |
-
-Algumas opções só aparecem quando a opção "mãe" está ligada. Por exemplo, o tamanho no chat só aparece se "Mostrar no chat" estiver ligado.
+| `-Lang en` / `-Lang pt` | Forces the language (default: Windows language) |
+| `-VencordDir "C:\path"` | Uses another folder for the Vencord source (default: `Documents\Vencord`) |
+| `-Yes` | Answers "yes" to every question |
+| `-SkipVesktop` | Only builds, doesn't touch Vesktop (install only) |
 
 ---
 
-## Instalação manual
+## How to use
 
-Se preferir fazer na mão, ou se não estiver no Windows:
+### Badges next to the name
+
+Once the plugin is enabled, badges show up by themselves in chat and in the member list. Hover over one to see its name.
+
+- Badges like **HypeSquad, Bug Hunter, Early Supporter and Active Developer** show up right away.
+- **Nitro and Boost** only exist in the person's full profile. The plugin loads profiles in the background, one at a time, starting with whoever is on screen, so these appear gradually.
+
+### Badge search
+
+1. Open a channel in any server.
+2. Click the **Nitro icon** in the channel bar, next to pins and the member list.
+3. You'll see buttons for every badge in the server and how many people have each one.
+4. Click a badge to select it. It gets a **green outline** and the list of people who have it appears.
+5. Select several to combine them. By default only people with **all** of them show up; you can switch to **any** in the settings.
+6. For each person in the results:
+   - click the **name or avatar** to open their profile;
+   - click the **chat bubble** to open a DM with them.
+
+**Tips**
+
+- Discord only loads part of the members of big servers. The search shows "X members loaded of Y". Scrolling the member list loads more people.
+- The **"Load badges of N members"** link fetches the profile of whoever is missing, to find Nitro and Boost. You can see how many are left and click **Stop** at any time.
+
+---
+
+## Settings
+
+In **Settings → Vencord → Plugins → BadgesPlus** (gear icon). Everything applies immediately, no restart needed.
+
+| Group | Options |
+|---|---|
+| **Language** | Auto (follows Discord) · English · Português |
+| **Where to show** | In chat · In the member list · On your own account · On bots |
+| **Appearance** | Size in chat · Size in member list · Space between badges · Max badges per person · Show "+N" when over the limit · Order (same as Discord / Nitro first / Nitro last) · Hover text (short name or Discord's text) |
+| **Which badges** | Nitro · Boost · HypeSquad · Discord programs (Staff, Partner, Bug Hunter, Early Supporter, Developers...) · Originally known as · Quests and Orbs · Other |
+| **Loading** | Load profiles automatically · Speed (Fast 0.5s / Normal 1s / Safe 2s / Very safe 4s) · Load bot profiles |
+| **Search** | Show the button · Combine badges (all / any) · Load badges when opening · Message button · Close the search when opening a DM · Include bots · Max results |
+
+Some options only show up when their "parent" option is on. For example, the chat size only appears if "Show in chat" is on.
+
+---
+
+## Manual install
+
+If you'd rather do it by hand, or you're not on Windows:
 
 ```bash
 git clone https://github.com/Vendicated/Vencord
@@ -97,42 +112,42 @@ cd Vencord
 pnpm install --frozen-lockfile
 ```
 
-1. Copie a pasta `badgesPlus` deste repositório para `Vencord/src/userplugins/`. Atenção: é **`userplugins`**, não `plugins`.
-2. Compile:
+1. Copy the `badgesPlus` folder from this repository into `Vencord/src/userplugins/`. Note: it's **`userplugins`**, not `plugins`.
+2. Build:
    ```bash
    pnpm build
    ```
-3. No Vesktop: **Configurações → Vesktop → Open Developer Settings → Vencord Location** e escolha a pasta `Vencord/dist`.
-4. Feche o Vesktop **por completo** (ícone perto do relógio → Sair) e abra de novo.
-5. Ative o **BadgesPlus** em **Configurações → Vencord → Plugins**.
+3. In Vesktop: **Settings → Vesktop → Open Developer Settings → Vencord Location** and pick the `Vencord/dist` folder.
+4. Close Vesktop **completely** (tray icon near the clock → Quit) and open it again.
+5. Enable **BadgesPlus** in **Settings → Vencord → Plugins**.
 
-No Discord oficial (sem Vesktop), em vez do passo 3 rode `pnpm inject`.
-
----
-
-## Problemas comuns
-
-**O plugin não aparece na lista de plugins**
-- Rode o `instalar.bat` de novo e leia as mensagens. Se alguma etapa falhar, ela aparece em vermelho.
-- Feche o Vesktop pelo ícone perto do relógio → **Sair**. Só fechar a janela não basta.
-
-**O plugin sumiu depois de um tempo**
-- Provavelmente o Vencord foi atualizado pela aba *Updater*. Rode o `instalar.bat` de novo.
-
-**O botão de Nitro não aparece na barra do canal**
-- Ele só aparece dentro de servidores, não em DMs.
-- Confira se **"Botão de pesquisar badges"** está ligado nas configurações do plugin.
-- Se mesmo assim não aparecer, o Discord pode ter mudado o código dele. Abra o console (`Ctrl+Shift+I`), procure erros com "BadgesPlus" e [abra uma issue](https://github.com/lirenzzzin/BadgesPlus/issues).
-
-**As badges de Nitro/Impulso demoram para aparecer**
-- É normal: o Discord entrega um perfil por vez. Se o Discord pedir para ir mais devagar, o plugin desacelera sozinho. Se demorar demais, use a velocidade **Normal**.
+On the official Discord app (no Vesktop), run `pnpm inject` instead of step 3.
 
 ---
 
-## Aviso
+## Troubleshooting
 
-Mods de cliente como o Vencord vão contra os Termos de Serviço do Discord. Use por sua conta e risco. O plugin carrega perfis de forma lenta e respeita os limites do Discord, e **não envia mensagens automaticamente**: o botão de mensagem só abre a conversa.
+**The plugin doesn't show up in the plugin list**
+- Run `install.bat` again and read the messages. If a step fails, it shows up in red.
+- Quit Vesktop from the tray icon near the clock → **Quit**. Just closing the window isn't enough.
 
-## Licença
+**The plugin disappeared after a while**
+- Vencord was probably updated from the *Updater* tab. Run `install.bat` again.
 
-[GPL-3.0](LICENSE), a mesma licença do Vencord.
+**The Nitro button doesn't show up in the channel bar**
+- It only shows up inside servers, not in DMs.
+- Check that **"Badge search button"** is on in the plugin settings.
+- If it still doesn't show up, Discord may have changed its code. Open the console (`Ctrl+Shift+I`), look for errors mentioning "BadgesPlus" and [open an issue](https://github.com/lirenzzzin/BadgesPlus/issues).
+
+**Nitro/Boost badges take a while to show up**
+- That's normal: Discord hands out one profile at a time. If Discord asks to slow down, the plugin slows down by itself. If it takes too long, use the **Normal** speed.
+
+---
+
+## Disclaimer
+
+Client mods like Vencord are against Discord's Terms of Service. Use at your own risk. The plugin loads profiles slowly, respects Discord's limits and **never sends messages automatically**: the message button only opens the conversation.
+
+## License
+
+[GPL-3.0](LICENSE), the same license as Vencord.

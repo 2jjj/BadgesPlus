@@ -4,15 +4,16 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { openPrivateChannel, openUserProfile } from "@utils/discord";
+import { openUserProfile } from "@utils/discord";
 import { classes } from "@utils/misc";
 import { RenderModalProps, User } from "@vencord/discord-types";
 import {
-    GuildMemberCountStore, GuildMemberStore, GuildStore, Modal, openModal, Tooltip,
+    ChannelActionCreators, GuildMemberCountStore, GuildMemberStore, GuildStore, Modal, openModal, Tooltip,
     useEffect, useMemo, UserProfileStore, UserStore, useState
 } from "@webpack/common";
 
 import { badgeIconUrl, badgeSortRank, getBadgeLabel, getFlagBadges, getTooltip, SimpleBadge } from "./badges";
+import { plural, t } from "./i18n";
 import { clearQueue, isDone, onQueueChange, pendingCount, queueProfiles } from "./profileQueue";
 import { settings } from "./settings";
 
@@ -23,7 +24,7 @@ interface MemberEntry {
     done: boolean;
 }
 
-/** Recalcula quando perfis, membros ou a fila mudam (com um pequeno atraso pra não travar) */
+/** Recalcula quando perfis, membros ou a fila mudam / Recomputes when profiles, members or the queue change */
 function useGuildMembers(guildId: string, includeBots: boolean) {
     const [tick, setTick] = useState(0);
 
@@ -106,7 +107,7 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
         if (s.searchAutoLoad) loadMissing();
     }, []);
 
-    // todas as badges que existem entre os membros carregados, com contagem
+    // badges entre os membros carregados, com contagem / badges among loaded members, with counts
     const groups = useMemo(() => {
         const map = new Map<string, { badge: SimpleBadge; count: number; }>();
         for (const m of members) {
@@ -136,37 +137,41 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
 
     function sendMessage(userId: string) {
         if (s.searchCloseOnMessage) modalProps.onClose();
-        openPrivateChannel(userId);
+        // O Discord agora espera um objeto; passar só o ID (como o openPrivateChannel do Vencord
+        // faz) cria um grupo vazio. / Discord now expects an object; passing just the ID (like
+        // Vencord's openPrivateChannel helper does) creates an empty group DM.
+        ChannelActionCreators.openPrivateChannel({ recipientIds: [userId], navigateToChannel: true });
     }
 
     const emptyText = s.searchMatchMode === "any"
-        ? "Ninguém tem nenhuma das badges selecionadas."
-        : "Ninguém tem todas as badges selecionadas.";
+        ? t("Nobody has any of the selected badges.", "Ninguém tem nenhuma das badges selecionadas.")
+        : t("Nobody has all the selected badges.", "Ninguém tem todas as badges selecionadas.");
+    const messageLabel = (name: string) => t(`Send a message to ${name}`, `Mandar mensagem para ${name}`);
 
     return (
         <Modal
             {...modalProps}
             size="md"
-            title="Pesquisar badges"
-            subtitle={guild ? `em ${guild.name}` : undefined}
+            title={t("Search badges", "Pesquisar badges")}
+            subtitle={guild ? t(`in ${guild.name}`, `em ${guild.name}`) : undefined}
         >
             <div className="vc-badgesplus-search">
                 <div className="vc-badgesplus-search-info">
                     <span>
-                        {members.length} membros carregados
-                        {memberCount ? ` de ${memberCount}` : ""}
-                        {" · "}{members.length - missing.length} com badges completas
+                        {plural(members.length, "member loaded", "members loaded", "membro carregado", "membros carregados")}
+                        {memberCount ? t(` of ${memberCount}`, ` de ${memberCount}`) : ""}
+                        {" · "}{t(`${members.length - missing.length} with full badges`, `${members.length - missing.length} com badges completas`)}
                     </span>
                     {pending > 0
                         ? (
                             <span>
-                                Carregando… {pending} restantes{" · "}
-                                <button className="vc-badgesplus-link" onClick={clearQueue}>Parar</button>
+                                {t(`Loading… ${pending} left`, `Carregando… ${pending} restantes`)}{" · "}
+                                <button className="vc-badgesplus-link" onClick={clearQueue}>{t("Stop", "Parar")}</button>
                             </span>
                         )
                         : missing.length > 0 && (
                             <button className="vc-badgesplus-link" onClick={loadMissing}>
-                                Carregar badges de {missing.length} membros
+                                {t(`Load badges of ${missing.length} members`, `Carregar badges de ${missing.length} membros`)}
                             </button>
                         )}
                 </div>
@@ -191,7 +196,7 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
                             })}
                         </div>
                     )
-                    : <div className="vc-badgesplus-search-info">Nenhuma badge encontrada ainda. Carregue as badges dos membros acima.</div>}
+                    : <div className="vc-badgesplus-search-info">{t("No badges found yet. Load the members' badges above.", "Nenhuma badge encontrada ainda. Carregue as badges dos membros acima.")}</div>}
 
                 {selected.length > 0 && (
                     <div className="vc-badgesplus-results">
@@ -199,9 +204,9 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
                             <span>
                                 {results.length === 0
                                     ? emptyText
-                                    : `${results.length} ${results.length === 1 ? "pessoa encontrada" : "pessoas encontradas"}`}
+                                    : plural(results.length, "person found", "people found", "pessoa encontrada", "pessoas encontradas")}
                             </span>
-                            <button className="vc-badgesplus-link" onClick={() => setSelected([])}>Limpar seleção</button>
+                            <button className="vc-badgesplus-link" onClick={() => setSelected([])}>{t("Clear selection", "Limpar seleção")}</button>
                         </div>
                         {results.slice(0, s.searchMaxResults).map(m => (
                             <div key={m.user.id} className="vc-badgesplus-row">
@@ -224,12 +229,12 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
                                     ))}
                                 </div>
                                 {s.searchShowMessageButton && m.user.id !== myId && !m.user.bot && (
-                                    <Tooltip text={`Mandar mensagem para ${m.name}`}>
+                                    <Tooltip text={messageLabel(m.name)}>
                                         {props => (
                                             <button
                                                 {...props}
                                                 className="vc-badgesplus-message"
-                                                aria-label={`Mandar mensagem para ${m.name}`}
+                                                aria-label={messageLabel(m.name)}
                                                 onClick={() => sendMessage(m.user.id)}
                                             >
                                                 <MessageIcon />
@@ -240,7 +245,7 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
                             </div>
                         ))}
                         {results.length > s.searchMaxResults && (
-                            <div className="vc-badgesplus-search-info">Mostrando os primeiros {s.searchMaxResults}.</div>
+                            <div className="vc-badgesplus-search-info">{t(`Showing the first ${s.searchMaxResults}.`, `Mostrando os primeiros ${s.searchMaxResults}.`)}</div>
                         )}
                     </div>
                 )}

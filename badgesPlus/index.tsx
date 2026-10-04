@@ -14,12 +14,13 @@ import { findComponentByCodeLazy } from "@webpack";
 import { SelectedGuildStore, useStateFromStores } from "@webpack/common";
 import type { ReactNode } from "react";
 
+import { t } from "./i18n";
 import { clearQueue, setMinDelay } from "./profileQueue";
 import { openSearchBadges } from "./SearchModal";
 import { settings } from "./settings";
 import { UserBadges } from "./UserBadges";
 
-// botão nativo da barra do canal (mesmo dos fixados / lista de membros)
+// botão nativo da barra do canal / native channel toolbar button (same as pins / member list)
 const HeaderBarIcon = findComponentByCodeLazy("tooltipPosition:", '"aria-haspopup":', '"data-jump-section":');
 
 function NitroIcon({ className, width = 24, height = 24 }: { className?: string; width?: number; height?: number; }) {
@@ -44,8 +45,8 @@ function SearchBadgesButton() {
     return (
         <HeaderBarIcon
             icon={NitroIcon}
-            tooltip="Pesquisar badges"
-            aria-label="Pesquisar badges"
+            tooltip={t("Search badges", "Pesquisar badges")}
+            aria-label={t("Search badges", "Pesquisar badges")}
             onClick={() => openSearchBadges(guildId)}
         />
     );
@@ -53,7 +54,7 @@ function SearchBadgesButton() {
 
 export default definePlugin({
     name: "BadgesPlus",
-    description: "Mostra as badges do perfil ao lado do nome (chat e lista de membros) e adiciona um pesquisador de membros por badge na barra do canal.",
+    description: "Profile badges next to names (chat & member list) + search members by badge. / Badges do perfil ao lado do nome (chat e lista de membros) + pesquisa de membros por badge.",
     authors: [{ name: "lirenzzzin", id: 0n }],
     dependencies: ["MessageDecorationsAPI", "MemberListDecoratorsAPI"],
     settings,
