@@ -1,0 +1,170 @@
+/* ---- Badges ao lado do nome ---- */
+
+.vc-badgesplus {
+    display: inline-flex;
+    align-items: center;
+    vertical-align: middle;
+    margin-left: 4px;
+}
+
+.vc-badgesplus-badge {
+    display: block;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+
+.vc-badgesplus-overflow {
+    color: var(--text-muted);
+    font-weight: 600;
+    line-height: 1;
+    cursor: default;
+}
+
+/* ---- Pesquisador ---- */
+
+.vc-badgesplus-search {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-bottom: 8px;
+}
+
+.vc-badgesplus-search-info {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.vc-badgesplus-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 12px;
+    color: var(--text-link);
+    cursor: pointer;
+}
+
+.vc-badgesplus-link:hover {
+    text-decoration: underline;
+}
+
+.vc-badgesplus-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.vc-badgesplus-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border: 1px solid var(--background-modifier-accent);
+    border-radius: 999px;
+    background: var(--background-secondary);
+    color: var(--text-normal);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.vc-badgesplus-chip:hover {
+    background: var(--background-modifier-hover);
+}
+
+.vc-badgesplus-chip-selected,
+.vc-badgesplus-chip-selected:hover {
+    border-color: var(--green-360, #23a55a);
+    box-shadow: 0 0 0 1px var(--green-360, #23a55a);
+    background: color-mix(in srgb, var(--green-360, #23a55a) 15%, var(--background-secondary));
+}
+
+.vc-badgesplus-count {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.vc-badgesplus-results {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.vc-badgesplus-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: 6px;
+}
+
+.vc-badgesplus-row:hover {
+    background: var(--background-modifier-hover);
+}
+
+.vc-badgesplus-person {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+    cursor: pointer;
+}
+
+.vc-badgesplus-avatar {
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.vc-badgesplus-names {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+}
+
+.vc-badgesplus-name {
+    color: var(--text-normal);
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.vc-badgesplus-username {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.vc-badgesplus-row-badges {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.vc-badgesplus-search-icon {
+    display: block;
+    object-fit: contain;
+}
+
+.vc-badgesplus-message {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    border: none;
+    border-radius: 50%;
+    background: var(--background-secondary);
+    color: var(--interactive-normal);
+    cursor: pointer;
+}
+
+.vc-badgesplus-message:hover {
+    background: var(--background-modifier-selected);
+    color: var(--interactive-hover);
+}
