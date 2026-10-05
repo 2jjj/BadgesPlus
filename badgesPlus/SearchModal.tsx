@@ -114,20 +114,20 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
         return Number.isFinite(n) && n > 0 && n <= 32 ? n : null;
     }, [lenInput]);
 
-    // Respeita as categorias ligadas em "Quais badges" e o "esconder quest". Assim dá pra achar
-    // quem tem Nitro Platina/Rubi/Esmeralda sem a lista encher de conta com quest.
-    // Respects the categories enabled under "Which badges" and the "hide quest" option. This way
-    // you can find people with Nitro Platinum/Ruby/Emerald without the list filling up with quest
-    // accounts.
+    // Por padrão mostra TUDO (igual antes). O filtro por categoria só entra se você ligar
+    // "Pesquisar só as categorias ligadas"; o "esconder quest" também é opcional.
+    // By default it shows EVERYTHING (like before). The category filter only kicks in if you
+    // enable "Search only the enabled categories"; the "hide quest" toggle is optional too.
     const filtered = useMemo(() => {
         const q = usernameQuery.trim().toLowerCase();
         return members
             .map(m => ({
                 ...m,
-                badges: m.badges.filter(b =>
-                    isCategoryEnabled(b)
-                    && !(s.searchHideQuestBadges && getCategory(b) === "quests")
-                )
+                badges: m.badges.filter(b => {
+                    if (s.searchRespectCategories && !isCategoryEnabled(b)) return false;
+                    if (s.searchHideQuestBadges && getCategory(b) === "quests") return false;
+                    return true;
+                })
             }))
             .filter(m => {
                 if (lengthFilter != null && m.user.username.length !== lengthFilter) return false;
@@ -135,7 +135,7 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
                 return true;
             });
     }, [
-        members, usernameQuery, lengthFilter, s.searchHideQuestBadges,
+        members, usernameQuery, lengthFilter, s.searchHideQuestBadges, s.searchRespectCategories,
         s.showNitro, s.showBoost, s.showHypeSquad, s.showHypeSquadEvents, s.showDiscordPrograms,
         s.showLegacyUsername, s.showQuests, s.showOther
     ]);
@@ -157,10 +157,19 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
         setScan(null);
     }
 
+    const scanning = scan != null;
+
+    // Enquanto a varredura roda (ou se "carregar badges ao abrir" estiver ligado), vai puxando os
+    // perfis dos membros que aparecem, pra Nitro/impulso surgirem junto com a lista.
+    // While the scan runs (or if "load badges on open" is on), keep pulling the profiles of the
+    // members as they show up, so Nitro/boost appear alongside the list.
     useEffect(() => {
-        if (s.searchAutoLoad) loadMissing();
-        return () => cancelAllMemberScans();
-    }, []);
+        if (!s.searchAutoLoad && !scanning) return;
+        const ids = filtered.filter(m => !m.done).map(m => m.user.id);
+        if (ids.length) queueProfiles(ids);
+    }, [filtered, s.searchAutoLoad, scanning]);
+
+    useEffect(() => () => cancelAllMemberScans(), []);
 
     // badges entre os membros filtrados, com contagem / badges among the filtered members, with counts
     const groups = useMemo(() => {

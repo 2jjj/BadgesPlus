@@ -191,7 +191,7 @@ export const settings = definePluginSettings({
         {
             type: OptionType.SLIDER,
             markers: [1, 2, 3, 4, 5, 6],
-            default: 3,
+            default: 4,
             stickToMarkers: true,
             onChange: (n: number) => setConcurrency(n)
         },
@@ -230,11 +230,11 @@ export const settings = definePluginSettings({
         ["How to combine the selected badges in the search.", "Como combinar as badges selecionadas no pesquisador."]
     ),
     searchAutoLoad: tr(
-        { type: OptionType.BOOLEAN, default: false },
+        { type: OptionType.BOOLEAN, default: true },
         ["Load badges when opening the search", "Carregar badges ao abrir o pesquisador"],
         [
-            "Starts loading every member's badges as soon as the search opens, without clicking \"Load\".",
-            "Começa a carregar as badges de todos os membros assim que o pesquisador abre, sem precisar clicar em \"Carregar\"."
+            "Starts loading every member's badges as soon as the search opens (and while loading members), without clicking \"Load\". This is what makes Nitro/boost show up.",
+            "Começa a carregar as badges de todos os membros assim que o pesquisador abre (e enquanto carrega membros), sem precisar clicar em \"Carregar\". É isso que faz Nitro/impulso aparecer."
         ]
     ),
     memberScanSpeed: tr(
@@ -271,11 +271,19 @@ export const settings = definePluginSettings({
         ["Shows bots in the results and in the badge counts.", "Mostra bots nos resultados e na contagem das badges."]
     ),
     searchHideQuestBadges: tr(
-        { type: OptionType.BOOLEAN, default: true },
+        { type: OptionType.BOOLEAN, default: false },
         ["Hide quest badges in the search", "Esconder badges de quest no pesquisador"],
         [
-            "Keeps Quest/Orbs badges out of the badge buttons and the results, so the search focuses on what you actually want (Nitro tiers, boost...).",
-            "Tira as badges de Missão/Orbs dos botões e dos resultados, pra busca focar no que você quer de verdade (níveis de Nitro, impulso...)."
+            "Keeps Quest/Orbs badges out of the badge buttons and the results. Off by default so the search shows everything.",
+            "Tira as badges de Missão/Orbs dos botões e dos resultados. Desligado por padrão pra busca mostrar tudo."
+        ]
+    ),
+    searchRespectCategories: tr(
+        { type: OptionType.BOOLEAN, default: false },
+        ["Search only the enabled categories", "Pesquisar só as categorias ligadas"],
+        [
+            "When on, the search only shows the badge categories you enabled under \"Which badges\". Turn it on to pick exactly what the search pulls; off shows everything.",
+            "Ligado, o pesquisador só mostra as categorias que você ativou em \"Quais badges\". Ligue pra escolher exatamente o que a busca puxa; desligado mostra tudo."
         ]
     ),
     searchMaxResults: tr(
@@ -297,5 +305,6 @@ export const settings = definePluginSettings({
     searchCloseOnMessage: { hidden() { return !this.store.showSearchButton || !this.store.searchShowMessageButton; } },
     searchIncludeBots: { hidden() { return !this.store.showSearchButton; } },
     searchHideQuestBadges: { hidden() { return !this.store.showSearchButton; } },
+    searchRespectCategories: { hidden() { return !this.store.showSearchButton; } },
     searchMaxResults: { hidden() { return !this.store.showSearchButton; } },
 });
