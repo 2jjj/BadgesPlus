@@ -21,7 +21,7 @@ import { FluxDispatcher, UserProfileStore } from "@webpack/common";
 const logger = new Logger("BadgesPlus");
 
 const MAX_DELAY = 8000;
-const MAX_CONCURRENCY = 6;
+const MAX_CONCURRENCY = 8;
 const SPEEDUP_AFTER = 8;
 
 const queue: string[] = [];
@@ -30,7 +30,7 @@ const failed = new Set<string>();
 const listeners = new Set<() => void>();
 
 let minDelay = 500;
-let maxConcurrency = 4;
+let maxConcurrency = 5;
 let delay = minDelay;
 let streak = 0;
 let running = false;
