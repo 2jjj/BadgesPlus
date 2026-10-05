@@ -167,24 +167,30 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
 
     const scanning = scan != null;
 
-    // Enquanto a varredura roda (ou se "carregar badges ao abrir" estiver ligado), vai puxando os
-    // perfis dos membros que faltam, pra Nitro/impulso surgirem junto com a lista. A fila deduplica,
-    // então repetir é barato e garante que nada fica de fora.
-    // While the scan runs (or if "load badges on open" is on), keep pulling the profiles of the
-    // missing members, so Nitro/boost appear alongside the list. The queue dedupes, so repeating is
-    // cheap and nothing gets left behind.
+    // Carregamento independente do React: um timer lê direto as stores e reenfileira quem ainda não
+    // tem perfil. Assim ele não depende de re-render pra continuar e não para no meio.
+    // React-independent loading: a timer reads the stores directly and re-queues whoever has no
+    // profile yet. It doesn't depend on a re-render to keep going, so it doesn't stop halfway.
     useEffect(() => {
         if (!s.searchAutoLoad && !scanning) return;
 
-        const notDone = filtered.filter(m => !m.done);
-        if (!notDone.length) return;
+        const loadMissingNow = () => {
+            const ids = GuildMemberStore.getMemberIds(guildId);
+            let missing = ids.filter(id => !isDone(id));
 
-        const limit = s.searchAutoLoadLimit;
-        const allowed = limit > 0 ? Math.max(0, limit - (filtered.length - notDone.length)) : notDone.length;
-        if (allowed <= 0) return;
+            const limit = s.searchAutoLoadLimit;
+            if (limit > 0) {
+                const doneCount = ids.length - missing.length;
+                missing = missing.slice(0, Math.max(0, limit - doneCount));
+            }
 
-        queueProfiles(notDone.slice(0, allowed).map(m => m.user.id));
-    }, [filtered, s.searchAutoLoad, s.searchAutoLoadLimit, scanning]);
+            if (missing.length) queueProfiles(missing);
+        };
+
+        loadMissingNow();
+        const interval = setInterval(loadMissingNow, 1000);
+        return () => clearInterval(interval);
+    }, [guildId, s.searchAutoLoad, s.searchAutoLoadLimit, scanning]);
 
     useEffect(() => () => cancelAllMemberScans(), []);
 
