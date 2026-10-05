@@ -37,6 +37,14 @@ let running = false;
 let pausedUntil = 0;
 let okCount = 0;
 let failCount = 0;
+let consecutive429 = 0;
+
+// Se o Discord mandar 429 seguidos, é limite GLOBAL: parar de insistir por um tempo, senão a
+// conta fica limitada e NADA de perfil carrega (nem em DM), só as badges de flag.
+// If Discord sends back-to-back 429s, it's a GLOBAL limit: stop pushing for a while, otherwise the
+// account stays limited and NO profile loads anywhere (not even in DMs), only flag badges.
+const CIRCUIT_AFTER = 6;
+const CIRCUIT_PAUSE = 60000;
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const notify = () => listeners.forEach(l => l());
@@ -134,6 +142,7 @@ async function worker() {
         try {
             await fetchUserProfile(id);
             okCount++;
+            consecutive429 = 0;
             if (++streak >= SPEEDUP_AFTER) {
                 streak = 0;
                 delay = Math.max(minDelay, Math.round(delay * 0.8));
@@ -147,7 +156,15 @@ async function worker() {
                 const retryAfter = Number(e?.body?.retry_after) || 5;
                 delay = Math.min(MAX_DELAY, Math.round(delay * 1.25) + 150);
                 pausedUntil = Math.max(pausedUntil, Date.now() + retryAfter * 1000);
-                logger.warn(`Rate limited: pausing ${retryAfter}s, new interval ${delay}ms`);
+
+                if (++consecutive429 >= CIRCUIT_AFTER) {
+                    consecutive429 = 0;
+                    pausedUntil = Math.max(pausedUntil, Date.now() + CIRCUIT_PAUSE);
+                    logger.warn("Vários 429 seguidos: pausando por 60s pra não travar a conta / many 429s in a row: pausing 60s so the account doesn't get limited");
+                } else {
+                    logger.warn(`Rate limited: pausing ${retryAfter}s, new interval ${delay}ms`);
+                }
+
                 // devolve pro FIM da fila: não ficar churnando as mesmas contas na frente
                 // back of the line: don't keep churning the same accounts at the front
                 queued.add(id);

@@ -199,7 +199,14 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
         return () => clearInterval(interval);
     }, [guildId, s.searchAutoLoad, s.searchAutoLoadLimit, scanning]);
 
-    useEffect(() => () => cancelAllMemberScans(), []);
+    // Ao fechar o pesquisador, para a varredura e LIMPA a fila: não deixa carregamento de servidor
+    // gigante rodando em segundo plano (era isso que estourava o limite e travava as DMs).
+    // On closing the search, stop the scan and CLEAR the queue: don't leave a huge guild load running
+    // in the background (that's what blew the rate limit and froze DMs).
+    useEffect(() => () => {
+        cancelAllMemberScans();
+        clearQueue();
+    }, []);
 
     // badges entre os membros filtrados, com contagem / badges among the filtered members, with counts
     const groups = useMemo(() => {
