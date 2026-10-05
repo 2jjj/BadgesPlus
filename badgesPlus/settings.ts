@@ -270,6 +270,14 @@ export const settings = definePluginSettings({
         ["Include bots in the search", "Incluir bots na pesquisa"],
         ["Shows bots in the results and in the badge counts.", "Mostra bots nos resultados e na contagem das badges."]
     ),
+    searchHideQuestBadges: tr(
+        { type: OptionType.BOOLEAN, default: true },
+        ["Hide quest badges in the search", "Esconder badges de quest no pesquisador"],
+        [
+            "Keeps Quest/Orbs badges out of the badge buttons and the results, so the search focuses on what you actually want (Nitro tiers, boost...).",
+            "Tira as badges de Missão/Orbs dos botões e dos resultados, pra busca focar no que você quer de verdade (níveis de Nitro, impulso...)."
+        ]
+    ),
     searchMaxResults: tr(
         { type: OptionType.SLIDER, markers: [50, 100, 200, 300, 500, 1000], default: 300, stickToMarkers: true },
         ["Max results", "Máximo de resultados"],
@@ -288,5 +296,6 @@ export const settings = definePluginSettings({
     searchShowMessageButton: { hidden() { return !this.store.showSearchButton; } },
     searchCloseOnMessage: { hidden() { return !this.store.showSearchButton || !this.store.searchShowMessageButton; } },
     searchIncludeBots: { hidden() { return !this.store.showSearchButton; } },
+    searchHideQuestBadges: { hidden() { return !this.store.showSearchButton; } },
     searchMaxResults: { hidden() { return !this.store.showSearchButton; } },
 });
