@@ -9,7 +9,7 @@ import { classes } from "@utils/misc";
 import { RenderModalProps, User } from "@vencord/discord-types";
 import {
     ChannelActionCreators, GuildMemberCountStore, GuildMemberStore, GuildStore, Modal, openModal, Tooltip,
-    useEffect, useMemo, UserProfileStore, UserStore, useState
+    useEffect, useMemo, useRef, UserProfileStore, UserStore, useState
 } from "@webpack/common";
 
 import { badgeIconUrl, badgeSortRank, getBadgeLabel, getCategory, getFlagBadges, getTooltip, isCategoryEnabled, SimpleBadge } from "./badges";
@@ -25,6 +25,10 @@ interface MemberEntry {
     done: boolean;
 }
 
+// Quantos perfis a busca automática enfileira por vez. Evita mandar 10 mil de uma vez e engasgar.
+// How many profiles the auto-load queues per pass. Keeps it from posting 10k at once and stalling.
+const AUTO_LOAD_BATCH = 200;
+
 /** Recalcula quando perfis, membros ou a fila mudam / Recomputes when profiles, members or the queue change */
 function useGuildMembers(guildId: string, includeBots: boolean) {
     const [tick, setTick] = useState(0);
@@ -33,7 +37,7 @@ function useGuildMembers(guildId: string, includeBots: boolean) {
         let timer: ReturnType<typeof setTimeout> | undefined;
         const onChange = () => {
             clearTimeout(timer);
-            timer = setTimeout(() => setTick(n => n + 1), 250);
+            timer = setTimeout(() => setTick(n => n + 1), 600);
         };
         UserProfileStore.addChangeListener(onChange);
         GuildMemberStore.addChangeListener(onChange);
@@ -158,16 +162,27 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
     }
 
     const scanning = scan != null;
+    const autoLoadedRef = useRef(0);
 
     // Enquanto a varredura roda (ou se "carregar badges ao abrir" estiver ligado), vai puxando os
-    // perfis dos membros que aparecem, pra Nitro/impulso surgirem junto com a lista.
+    // perfis dos membros que aparecem, em lotes, pra Nitro/impulso surgirem junto sem travar.
     // While the scan runs (or if "load badges on open" is on), keep pulling the profiles of the
-    // members as they show up, so Nitro/boost appear alongside the list.
+    // members as they show up, in batches, so Nitro/boost appear alongside without stalling.
     useEffect(() => {
         if (!s.searchAutoLoad && !scanning) return;
-        const ids = filtered.filter(m => !m.done).map(m => m.user.id);
-        if (ids.length) queueProfiles(ids);
-    }, [filtered, s.searchAutoLoad, scanning]);
+
+        const limit = s.searchAutoLoadLimit;
+        if (limit > 0 && autoLoadedRef.current >= limit) return;
+
+        const room = limit > 0 ? Math.min(AUTO_LOAD_BATCH, limit - autoLoadedRef.current) : AUTO_LOAD_BATCH;
+        if (room <= 0) return;
+
+        const batch = filtered.filter(m => !m.done).slice(0, room);
+        if (!batch.length) return;
+
+        autoLoadedRef.current += batch.length;
+        queueProfiles(batch.map(m => m.user.id));
+    }, [filtered, s.searchAutoLoad, s.searchAutoLoadLimit, scanning]);
 
     useEffect(() => () => cancelAllMemberScans(), []);
 

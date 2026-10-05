@@ -255,6 +255,19 @@ export const settings = definePluginSettings({
             "Intervalo entre requisições ao carregar a lista completa de membros. São requisições de gateway, então não usam o limite de perfil."
         ]
     ),
+    searchAutoLoadLimit: tr(
+        {
+            type: OptionType.SLIDER,
+            markers: [0, 200, 500, 1000, 2000],
+            default: 0,
+            stickToMarkers: true
+        },
+        ["Auto-load limit (profiles)", "Limite de carregamento automático (perfis)"],
+        [
+            "How many profiles the search loads automatically when it opens. 0 = all. Lower it if it feels heavy; you can always load the rest with the button.",
+            "Quantos perfis o pesquisador carrega sozinho ao abrir. 0 = todos. Diminua se pesar; dá pra carregar o resto no botão."
+        ]
+    ),
     searchShowMessageButton: tr(
         { type: OptionType.BOOLEAN, default: true },
         ["Message button in results", "Botão de mensagem nos resultados"],
@@ -300,6 +313,7 @@ export const settings = definePluginSettings({
     fetchBotProfiles: { hidden() { return !this.store.fetchProfiles; } },
     searchMatchMode: { hidden() { return !this.store.showSearchButton; } },
     searchAutoLoad: { hidden() { return !this.store.showSearchButton; } },
+    searchAutoLoadLimit: { hidden() { return !this.store.showSearchButton; } },
     memberScanSpeed: { hidden() { return !this.store.showSearchButton; } },
     searchShowMessageButton: { hidden() { return !this.store.showSearchButton; } },
     searchCloseOnMessage: { hidden() { return !this.store.showSearchButton || !this.store.searchShowMessageButton; } },
