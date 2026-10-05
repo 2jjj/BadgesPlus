@@ -20,7 +20,7 @@ import { FluxDispatcher, UserProfileStore } from "@webpack/common";
 
 const logger = new Logger("BadgesPlus");
 
-const MAX_DELAY = 8000;
+const MAX_DELAY = 6000;
 const MAX_CONCURRENCY = 8;
 const SPEEDUP_AFTER = 8;
 
@@ -30,11 +30,13 @@ const failed = new Set<string>();
 const listeners = new Set<() => void>();
 
 let minDelay = 500;
-let maxConcurrency = 5;
+let maxConcurrency = 3;
 let delay = minDelay;
 let streak = 0;
 let running = false;
 let pausedUntil = 0;
+let okCount = 0;
+let failCount = 0;
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const notify = () => listeners.forEach(l => l());
@@ -56,6 +58,16 @@ export function setConcurrency(n: number) {
 export const isDone = (id: string) => failed.has(id) || !!UserProfileStore.getUserProfile(id);
 
 export const pendingCount = () => queue.length;
+
+/** Estatísticas pra interface / stats for the UI */
+export function getQueueStats() {
+    return {
+        pending: queue.length,
+        ok: okCount,
+        failed: failCount,
+        pausedMs: Math.max(0, pausedUntil - Date.now())
+    };
+}
 
 export function onQueueChange(listener: () => void) {
     listeners.add(listener);
@@ -121,6 +133,7 @@ async function worker() {
 
         try {
             await fetchUserProfile(id);
+            okCount++;
             if (++streak >= SPEEDUP_AFTER) {
                 streak = 0;
                 delay = Math.max(minDelay, Math.round(delay * 0.8));
@@ -132,16 +145,19 @@ async function worker() {
 
             if (e?.status === 429) {
                 const retryAfter = Number(e?.body?.retry_after) || 5;
-                delay = Math.min(MAX_DELAY, Math.round(delay * 1.5) + 250);
-                pausedUntil = Date.now() + retryAfter * 1000;
+                delay = Math.min(MAX_DELAY, Math.round(delay * 1.25) + 150);
+                pausedUntil = Math.max(pausedUntil, Date.now() + retryAfter * 1000);
                 logger.warn(`Rate limited: pausing ${retryAfter}s, new interval ${delay}ms`);
+                // devolve pro FIM da fila: não ficar churnando as mesmas contas na frente
+                // back of the line: don't keep churning the same accounts at the front
                 queued.add(id);
-                queue.unshift(id);
+                queue.push(id);
                 notify();
                 await sleep(retryAfter * 1000);
                 continue;
             }
 
+            failCount++;
             failed.add(id);
         }
 

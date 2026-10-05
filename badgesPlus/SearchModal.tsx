@@ -15,7 +15,7 @@ import {
 import { badgeIconUrl, badgeSortRank, getBadgeLabel, getCategory, getFlagBadges, getTooltip, isCategoryEnabled, SimpleBadge } from "./badges";
 import { plural, t } from "./i18n";
 import { cancelAllMemberScans, MemberScanProgress, scanGuildMembers } from "./memberLoader";
-import { clearQueue, isDone, onQueueChange, pendingCount, queueProfiles } from "./profileQueue";
+import { clearQueue, getQueueStats, isDone, onQueueChange, pendingCount, queueProfiles } from "./profileQueue";
 import { settings } from "./settings";
 
 interface MemberEntry {
@@ -111,6 +111,13 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
     // total já carregado, sem o filtro de bots / total already loaded, without the bot filter
     const rawLoaded = GuildMemberStore.getMemberIds(guildId).length;
     const [scan, setScan] = useState<MemberScanProgress | null>(null);
+    const [stats, setStats] = useState(getQueueStats());
+
+    // Atualiza o placar dos perfis uma vez por segundo / refresh the profile tally once a second
+    useEffect(() => {
+        const interval = setInterval(() => setStats(getQueueStats()), 1000);
+        return () => clearInterval(interval);
+    }, []);
 
     // ---- filtros do pesquisador / search filters ----
     const [usernameQuery, setUsernameQuery] = useState("");
@@ -296,6 +303,23 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
                             )}
                     </div>
                 )}
+
+                <div className="vc-badgesplus-search-info">
+                    <span>
+                        {t(
+                            `Profiles: ${stats.ok} loaded${stats.failed ? ` · ${stats.failed} unavailable` : ""}${stats.pending ? ` · ${stats.pending} queued` : ""}`,
+                            `Perfis: ${stats.ok} carregados${stats.failed ? ` · ${stats.failed} indisponíveis` : ""}${stats.pending ? ` · ${stats.pending} na fila` : ""}`
+                        )}
+                    </span>
+                    {stats.pausedMs > 0 && (
+                        <span>
+                            {t(
+                                `Waiting on Discord's limit (~${Math.ceil(stats.pausedMs / 1000)}s)`,
+                                `Aguardando limite do Discord (~${Math.ceil(stats.pausedMs / 1000)}s)`
+                            )}
+                        </span>
+                    )}
+                </div>
 
                 <div className="vc-badgesplus-controls">
                     <input

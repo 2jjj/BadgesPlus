@@ -190,8 +190,8 @@ export const settings = definePluginSettings({
     loadConcurrency: tr(
         {
             type: OptionType.SLIDER,
-            markers: [1, 2, 3, 4, 5, 6, 8],
-            default: 5,
+            markers: [1, 2, 3, 4, 5, 6],
+            default: 3,
             stickToMarkers: true,
             onChange: (n: number) => setConcurrency(n)
         },
