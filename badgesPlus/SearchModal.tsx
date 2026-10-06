@@ -12,6 +12,7 @@ import {
     useEffect, useMemo, UserProfileStore, UserStore, useState
 } from "@webpack/common";
 
+import { getCachedBadges, onCacheChange } from "./badgeCache";
 import { badgeIconUrl, badgeSortRank, getBadgeLabel, getCategory, getFlagBadges, getTooltip, isCategoryEnabled, SimpleBadge } from "./badges";
 import { plural, t } from "./i18n";
 import { cancelAllMemberScans, MemberScanProgress, scanGuildMembers } from "./memberLoader";
@@ -46,11 +47,13 @@ function useGuildMembers(guildId: string, includeBots: boolean) {
         UserProfileStore.addChangeListener(onChange);
         GuildMemberStore.addChangeListener(onChange);
         const unsubscribe = onQueueChange(onChange);
+        const unsubscribeCache = onCacheChange(onChange);
         return () => {
             clearTimeout(timer);
             UserProfileStore.removeChangeListener(onChange);
             GuildMemberStore.removeChangeListener(onChange);
             unsubscribe();
+            unsubscribeCache();
         };
     }, []);
 
@@ -64,7 +67,7 @@ function useGuildMembers(guildId: string, includeBots: boolean) {
             entries.push({
                 user,
                 name: GuildMemberStore.getNick(guildId, id) ?? (user as any).globalName ?? user.username,
-                badges: (profile?.badges as SimpleBadge[] | undefined) ?? getFlagBadges(user),
+                badges: (profile?.badges as SimpleBadge[] | undefined) ?? getCachedBadges(id) ?? getFlagBadges(user),
                 done: isDone(id)
             });
         }

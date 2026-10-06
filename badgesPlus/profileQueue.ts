@@ -8,6 +8,8 @@ import { fetchUserProfile } from "@utils/discord";
 import { Logger } from "@utils/Logger";
 import { FluxDispatcher, UserProfileStore } from "@webpack/common";
 
+import { hasCachedBadges, setCachedBadges } from "./badgeCache";
+
 // Fila de busca de perfis, usada pelas badges ao lado do nome e pelo pesquisador.
 // Profile fetch queue, shared by the name badges and the badge search.
 //
@@ -62,8 +64,9 @@ export function setConcurrency(n: number) {
     maxConcurrency = Math.max(1, Math.min(MAX_CONCURRENCY, value));
 }
 
-/** Perfil já carregado ou falhou (ex.: conta apagada) / Profile already loaded or failed (e.g. deleted account) */
-export const isDone = (id: string) => failed.has(id) || !!UserProfileStore.getUserProfile(id);
+/** Perfil já carregado, já veio do cache, ou falhou / profile already loaded, already cached, or failed */
+export const isDone = (id: string) =>
+    failed.has(id) || hasCachedBadges(id) || !!UserProfileStore.getUserProfile(id);
 
 export const pendingCount = () => queue.length;
 
@@ -141,6 +144,10 @@ async function worker() {
 
         try {
             await fetchUserProfile(id);
+            // guarda no cache persistente pra não recomeçar do topo depois
+            // store in the persistent cache so it doesn't start over from the top later
+            const badges = UserProfileStore.getUserProfile(id)?.badges;
+            if (badges) setCachedBadges(id, badges);
             okCount++;
             consecutive429 = 0;
             if (++streak >= SPEEDUP_AFTER) {

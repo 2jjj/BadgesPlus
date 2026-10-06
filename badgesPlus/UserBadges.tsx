@@ -5,8 +5,9 @@
  */
 
 import { User } from "@vencord/discord-types";
-import { Tooltip, useEffect, UserProfileStore, UserStore, useStateFromStores } from "@webpack/common";
+import { Tooltip, useEffect, useReducer, UserProfileStore, UserStore, useStateFromStores } from "@webpack/common";
 
+import { getCachedBadges, onCacheChange } from "./badgeCache";
 import { badgeIconUrl, filterAndSortBadges, getBadgeLabel, getFlagBadges, getTooltip, SimpleBadge } from "./badges";
 import { queueProfiles } from "./profileQueue";
 import { settings } from "./settings";
@@ -14,6 +15,10 @@ import { settings } from "./settings";
 export function UserBadges({ user, where }: { user: User; where: "chat" | "list"; }) {
     // settings.use: reage na hora a mudanças nas configurações / re-renders as soon as a setting changes
     const s = settings.use();
+
+    // re-renderiza quando o cache em disco carrega / re-renders when the disk cache loads
+    const [, forceUpdate] = useReducer(x => x + 1, 0);
+    useEffect(() => onCacheChange(forceUpdate), []);
 
     const enabled = where === "chat" ? s.showInChat : s.showInMemberList;
     const allowed = enabled
@@ -23,7 +28,7 @@ export function UserBadges({ user, where }: { user: User; where: "chat" | "list"
     const profileBadges = useStateFromStores(
         [UserProfileStore],
         () => UserProfileStore.getUserProfile(user.id)?.badges as SimpleBadge[] | undefined
-    );
+    ) ?? getCachedBadges(user.id);
 
     useEffect(() => {
         if (!allowed || profileBadges || !s.fetchProfiles) return;

@@ -39,16 +39,28 @@
 }
 
 .vc-badgesplus-link {
-    background: none;
-    border: none;
-    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border: 1px solid var(--background-modifier-accent);
+    border-radius: 999px;
+    background: var(--background-secondary);
+    color: var(--text-normal);
     font-size: 12px;
-    color: var(--text-link);
+    font-weight: 500;
+    line-height: 1.2;
     cursor: pointer;
+    transition: background 120ms ease, border-color 120ms ease, transform 80ms ease;
 }
 
 .vc-badgesplus-link:hover {
-    text-decoration: underline;
+    background: var(--background-modifier-hover);
+    border-color: var(--interactive-active);
+}
+
+.vc-badgesplus-link:active {
+    transform: scale(0.97);
 }
 
 .vc-badgesplus-chips {
@@ -61,17 +73,24 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 10px;
+    padding: 5px 11px;
     border: 1px solid var(--background-modifier-accent);
     border-radius: 999px;
     background: var(--background-secondary);
     color: var(--text-normal);
     font-size: 13px;
+    font-weight: 500;
     cursor: pointer;
+    transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease;
 }
 
 .vc-badgesplus-chip:hover {
     background: var(--background-modifier-hover);
+    border-color: var(--interactive-active);
+}
+
+.vc-badgesplus-chip:active {
+    transform: scale(0.98);
 }
 
 .vc-badgesplus-chip-selected,

@@ -14,6 +14,7 @@ import { findComponentByCodeLazy } from "@webpack";
 import { SelectedGuildStore, useStateFromStores } from "@webpack/common";
 import type { ReactNode } from "react";
 
+import { ensureCacheLoaded, flush } from "./badgeCache";
 import { t } from "./i18n";
 import { clearQueue, setConcurrency, setMinDelay } from "./profileQueue";
 import { openSearchBadges } from "./SearchModal";
@@ -80,6 +81,7 @@ export default definePlugin({
     start() {
         setMinDelay(settings.store.loadSpeed);
         setConcurrency(settings.store.loadConcurrency);
+        void ensureCacheLoaded();
 
         addMessageDecoration("vc-badgesplus", props =>
             props.message?.author ? <UserBadges user={props.message.author} where="chat" /> : null
@@ -91,6 +93,7 @@ export default definePlugin({
 
     stop() {
         clearQueue();
+        void flush();
         removeMessageDecoration("vc-badgesplus");
         removeMemberListDecorator("vc-badgesplus");
     }
