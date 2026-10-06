@@ -9,7 +9,7 @@ import { classes } from "@utils/misc";
 import { RenderModalProps, User } from "@vencord/discord-types";
 import {
     ChannelActionCreators, GuildMemberCountStore, GuildMemberStore, GuildStore, Modal, openModal, Tooltip,
-    useEffect, useMemo, UserProfileStore, UserStore, useState
+    useEffect, useMemo, useRef, UserProfileStore, UserStore, useState
 } from "@webpack/common";
 
 import { getCachedBadges, onCacheChange } from "./badgeCache";
@@ -161,6 +161,15 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
     const missing = filtered.filter(m => !m.done);
     const loadMissing = () => queueProfiles(missing.map(m => m.user.id));
 
+    // ids que casam com o filtro de nome/tamanho, sempre atualizado pro timer ler
+    // ids matching the name/length filter, kept fresh for the timer to read
+    const filteredIdsRef = useRef<string[]>([]);
+    useEffect(() => {
+        filteredIdsRef.current = filtered.map(m => m.user.id);
+    }, [filtered]);
+
+    const hasTextFilter = usernameQuery.trim().length > 0 || lengthFilter != null;
+
     function startMemberScan() {
         setScan({ loaded: rawLoaded, total: memberCount || 0, done: false, cancelled: false });
         scanGuildMembers(
@@ -178,29 +187,43 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
     const scanning = scan != null;
 
     // Carregamento independente do React: um timer lê direto as stores e reenfileira quem ainda não
-    // tem perfil. Assim ele não depende de re-render pra continuar e não para no meio.
+    // tem perfil. Quando há filtro de nome/tamanho, ele PRIORIZA quem casa com o filtro — assim você
+    // acha o que quer (ex.: 3 letras) sem varrer o servidor inteiro em ordem.
     // React-independent loading: a timer reads the stores directly and re-queues whoever has no
-    // profile yet. It doesn't depend on a re-render to keep going, so it doesn't stop halfway.
+    // profile yet. When there's a name/length filter it PRIORITIZES the matching members — so you
+    // find what you want (e.g. 3-char names) without scanning the whole server in order.
     useEffect(() => {
-        if (!s.searchAutoLoad && !scanning) return;
+        if (!s.searchAutoLoad && !scanning && !hasTextFilter) return;
 
         const loadMissingNow = () => {
-            const ids = GuildMemberStore.getMemberIds(guildId);
-            let missing = ids.filter(id => !isDone(id));
+            const allIds = GuildMemberStore.getMemberIds(guildId);
+            const allMissing = allIds.filter(id => !isDone(id));
+            if (!allMissing.length) return;
+
+            let ordered = allMissing;
+
+            const priorityIds = filteredIdsRef.current;
+            if (hasTextFilter && priorityIds.length && priorityIds.length < allIds.length) {
+                const prioritySet = new Set(priorityIds);
+                ordered = [
+                    ...allMissing.filter(id => prioritySet.has(id)),
+                    ...allMissing.filter(id => !prioritySet.has(id))
+                ];
+            }
 
             const limit = s.searchAutoLoadLimit;
             if (limit > 0) {
-                const doneCount = ids.length - missing.length;
-                missing = missing.slice(0, Math.max(0, limit - doneCount));
+                const doneCount = allIds.length - allMissing.length;
+                ordered = ordered.slice(0, Math.max(0, limit - doneCount));
             }
 
-            if (missing.length) queueProfiles(missing);
+            if (ordered.length) queueProfiles(ordered);
         };
 
         loadMissingNow();
         const interval = setInterval(loadMissingNow, 1000);
         return () => clearInterval(interval);
-    }, [guildId, s.searchAutoLoad, s.searchAutoLoadLimit, scanning]);
+    }, [guildId, s.searchAutoLoad, s.searchAutoLoadLimit, scanning, hasTextFilter]);
 
     // Ao fechar o pesquisador, para a varredura e LIMPA a fila: não deixa carregamento de servidor
     // gigante rodando em segundo plano (era isso que estourava o limite e travava as DMs).
