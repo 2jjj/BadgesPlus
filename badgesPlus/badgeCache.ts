@@ -89,7 +89,10 @@ export async function flush() {
 
     try {
         await DataStore.setMany(batch);
-        notify();
+        // sem notify aqui de propósito: gravar não muda o que está na tela, e notificar faria
+        // TODAS as badges re-renderizarem a cada 3s. A carga inicial do cache já notifica.
+        // no notify on purpose: saving doesn't change what's on screen, and notifying would make
+        // EVERY badge re-render every 3s. The initial cache load already notifies.
     } catch (e) {
         logger.error("Falha ao salvar o cache de badges / failed to save badge cache", e);
     }
