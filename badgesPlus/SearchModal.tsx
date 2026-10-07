@@ -511,10 +511,7 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
                                                     {...props}
                                                     className="vc-badgesplus-message"
                                                     aria-label={t("Send \"oi\"", "Mandar \"oi\"")}
-                                                    onClick={() => {
-                                                        if (s.searchCloseOnMessage) modalProps.onClose();
-                                                        void sendHi(m.user.id);
-                                                    }}
+                                                    onClick={() => void sendHi(m.user.id)}
                                                 >
                                                     <MessageIcon />
                                                 </button>
