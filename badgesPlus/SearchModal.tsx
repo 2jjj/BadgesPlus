@@ -38,7 +38,7 @@ function shuffle<T>(input: T[]): T[] {
 
 // Ações de amizade do Discord / Discord's relationship actions
 const RelationshipActions = findByPropsLazy("sendRequest", "addRelationship") as {
-    sendRequest?: (data: { discord_id: string; }) => void;
+    sendRequest?: (data: { discordTag: string; }) => void;
 } | undefined;
 
 /** Manda um "oi" na DM / sends a "hi" in the DM */
@@ -52,10 +52,11 @@ async function sendHi(userId: string) {
     }
 }
 
-/** Manda pedido de amizade / sends a friend request */
-function addFriend(userId: string) {
+/** Manda pedido de amizade (a API espera a tag "nome#0000") / sends a friend request */
+function addFriend(user: User) {
     try {
-        RelationshipActions?.sendRequest?.({ discord_id: userId });
+        const discriminator = (user as any).discriminator ?? "0";
+        RelationshipActions?.sendRequest?.({ discordTag: `${user.username}#${discriminator}` });
     } catch (e) {
         console.error("[BadgesPlus] falha ao adicionar amigo / failed to add friend", e);
     }
@@ -518,7 +519,7 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
                                                     {...props}
                                                     className="vc-badgesplus-addfriend"
                                                     aria-label={t("Add friend", "Adicionar amigo")}
-                                                    onClick={() => addFriend(m.user.id)}
+                                                    onClick={() => addFriend(m.user)}
                                                 >
                                                     <FriendIcon />
                                                 </button>
