@@ -4,13 +4,13 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { openUserProfile, sendMessage } from "@utils/discord";
+import { openUserProfile } from "@utils/discord";
 import { classes } from "@utils/misc";
 import { RenderModalProps, User } from "@vencord/discord-types";
 import { findByPropsLazy } from "@webpack";
 import {
-    ChannelActionCreators, GuildMemberCountStore, GuildMemberStore, GuildStore, Modal, openModal, Tooltip,
-    useEffect, useMemo, useRef, UserProfileStore, UserStore, useState
+    ChannelActionCreators, GuildMemberCountStore, GuildMemberStore, GuildStore, MessageActions, Modal, openModal,
+    showToast, Tooltip, useEffect, useMemo, useRef, UserProfileStore, UserStore, useState
 } from "@webpack/common";
 
 import { getBoostIcon, getCachedBadges, onCacheChange } from "./badgeCache";
@@ -44,11 +44,18 @@ const RelationshipActions = findByPropsLazy("sendRequest", "addRelationship") as
 /** Manda um "oi" na DM / sends a "hi" in the DM */
 async function sendHi(userId: string) {
     try {
-        const res = await (ChannelActionCreators as any).ensurePrivateChannel(userId);
-        const channelId: string | undefined = typeof res === "string" ? res : res?.id;
-        if (channelId) sendMessage(channelId, { content: "oi" });
+        let channelId: string | undefined = (ChannelActionCreators as any)?.getDMFromUserId?.(userId);
+        if (!channelId) {
+            const res = await (ChannelActionCreators as any).ensurePrivateChannel(userId);
+            channelId = typeof res === "string" ? res : res?.id;
+        }
+        if (!channelId) throw new Error("canal não encontrado");
+
+        MessageActions.sendMessage(channelId, { content: "oi", tts: false, invalidEmojis: [], validNonShortcutEmojis: [] });
+        showToast("oi enviado!");
     } catch (e) {
         console.error("[BadgesPlus] falha ao mandar oi / failed to send hi", e);
+        showToast("Falha ao mandar oi — veja o console");
     }
 }
 
