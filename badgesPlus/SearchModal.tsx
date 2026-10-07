@@ -4,9 +4,10 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { openUserProfile } from "@utils/discord";
+import { openUserProfile, sendMessage } from "@utils/discord";
 import { classes } from "@utils/misc";
 import { RenderModalProps, User } from "@vencord/discord-types";
+import { findByPropsLazy } from "@webpack";
 import {
     ChannelActionCreators, GuildMemberCountStore, GuildMemberStore, GuildStore, Modal, openModal, Tooltip,
     useEffect, useMemo, useRef, UserProfileStore, UserStore, useState
@@ -33,6 +34,31 @@ function shuffle<T>(input: T[]): T[] {
         [input[i], input[j]] = [input[j], input[i]];
     }
     return input;
+}
+
+// Ações de amizade do Discord / Discord's relationship actions
+const RelationshipActions = findByPropsLazy("sendRequest", "addRelationship") as {
+    sendRequest?: (data: { discord_id: string; }) => void;
+} | undefined;
+
+/** Manda um "oi" na DM / sends a "hi" in the DM */
+async function sendHi(userId: string) {
+    try {
+        const res = await (ChannelActionCreators as any).ensurePrivateChannel(userId);
+        const channelId: string | undefined = typeof res === "string" ? res : res?.id;
+        if (channelId) sendMessage(channelId, { content: "oi" });
+    } catch (e) {
+        console.error("[BadgesPlus] falha ao mandar oi / failed to send hi", e);
+    }
+}
+
+/** Manda pedido de amizade / sends a friend request */
+function addFriend(userId: string) {
+    try {
+        RelationshipActions?.sendRequest?.({ discord_id: userId });
+    } catch (e) {
+        console.error("[BadgesPlus] falha ao adicionar amigo / failed to add friend", e);
+    }
 }
 
 /** Recalcula quando perfis, membros ou a fila mudam / Recomputes when profiles, members or the queue change */
@@ -117,6 +143,14 @@ function MessageIcon() {
     return (
         <svg width={16} height={16} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
             <path d="M12 2.8C6.7 2.8 2.5 6.5 2.5 11.1c0 2.4 1.2 4.6 3.1 6.1-.2 1.4-.8 2.7-1.8 3.7-.2.2-.1.6.2.6 2.2 0 4-.8 5.3-1.8.9.2 1.8.3 2.7.3 5.3 0 9.5-3.7 9.5-8.3S17.3 2.8 12 2.8Z" />
+        </svg>
+    );
+}
+
+function FriendIcon() {
+    return (
+        <svg width={16} height={16} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M9.5 12.5a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-3.1 0-5.6 1.7-5.6 4V21h11.2v-2.5c0-2.3-2.5-4-5.6-4Zm8.75-6.75V5.5h-1.5v2.25H14.5v1.5h2.25V11.5h1.5V9.25h2.25v-1.5Z" />
         </svg>
     );
 }
@@ -298,18 +332,9 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
     const toggle = (id: string) =>
         setSelected(sel => sel.includes(id) ? sel.filter(x => x !== id) : [...sel, id]);
 
-    function sendMessage(userId: string) {
-        if (s.searchCloseOnMessage) modalProps.onClose();
-        // O Discord agora espera um objeto; passar só o ID (como o openPrivateChannel do Vencord
-        // faz) cria um grupo vazio. / Discord now expects an object; passing just the ID (like
-        // Vencord's openPrivateChannel helper does) creates an empty group DM.
-        ChannelActionCreators.openPrivateChannel({ recipientIds: [userId], navigateToChannel: true });
-    }
-
     const emptyText = s.searchMatchMode === "any"
         ? t("Nobody has any of the selected badges.", "Ninguém tem nenhuma das badges selecionadas.")
         : t("Nobody has all the selected badges.", "Ninguém tem todas as badges selecionadas.");
-    const messageLabel = (name: string) => t(`Send a message to ${name}`, `Mandar mensagem para ${name}`);
 
     return (
         <Modal
@@ -471,18 +496,35 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
                                     ))}
                                 </div>
                                 {s.searchShowMessageButton && m.user.id !== myId && !m.user.bot && (
-                                    <Tooltip text={messageLabel(m.name)}>
-                                        {props => (
-                                            <button
-                                                {...props}
-                                                className="vc-badgesplus-message"
-                                                aria-label={messageLabel(m.name)}
-                                                onClick={() => sendMessage(m.user.id)}
-                                            >
-                                                <MessageIcon />
-                                            </button>
-                                        )}
-                                    </Tooltip>
+                                    <>
+                                        <Tooltip text={t("Send \"oi\"", "Mandar \"oi\"")}>
+                                            {props => (
+                                                <button
+                                                    {...props}
+                                                    className="vc-badgesplus-message"
+                                                    aria-label={t("Send \"oi\"", "Mandar \"oi\"")}
+                                                    onClick={() => {
+                                                        if (s.searchCloseOnMessage) modalProps.onClose();
+                                                        void sendHi(m.user.id);
+                                                    }}
+                                                >
+                                                    <MessageIcon />
+                                                </button>
+                                            )}
+                                        </Tooltip>
+                                        <Tooltip text={t("Add friend", "Adicionar amigo")}>
+                                            {props => (
+                                                <button
+                                                    {...props}
+                                                    className="vc-badgesplus-addfriend"
+                                                    aria-label={t("Add friend", "Adicionar amigo")}
+                                                    onClick={() => addFriend(m.user.id)}
+                                                >
+                                                    <FriendIcon />
+                                                </button>
+                                            )}
+                                        </Tooltip>
+                                    </>
                                 )}
                             </div>
                         ))}

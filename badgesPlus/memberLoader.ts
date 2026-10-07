@@ -20,13 +20,21 @@ const GuildActions = findByPropsLazy("requestMembers", "requestMembersById") as 
 
 const CHARS = "abcdefghijklmnopqrstuvwxyz0123456789._-";
 const PAGE = 100;
-const MAX_DEPTH = 3;
 const REQUEST_BUDGET = 9000;
 const CONCURRENCY = 6;
 const STEP_MS = 90; // intervalo entre despachos / gap between dispatches
-const SETTLE_MS = 900; // espera os chunks do nível chegarem / wait for the level's chunks
+const SETTLE_MS = 900; // espera os chunks chegarem / wait for the chunks
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+/** Embaralha (Fisher-Yates) / shuffles */
+function shuffled<T>(input: T[]): T[] {
+    for (let i = input.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [input[i], input[j]] = [input[j], input[i]];
+    }
+    return input;
+}
 
 export interface MemberScanProgress {
     loaded: number;
@@ -148,24 +156,25 @@ export function scanGuildMembers(
 
     void (async () => {
         try {
-            let queries = CHARS.split("");
-
-            for (let depth = 1; depth <= MAX_DEPTH && !controller.cancelled && budget > 0; depth++) {
-                if (total && loaded >= total) break;
-
-                const added = await runLevel(queries);
-                logger.info(`Varredura nível ${depth}: +${added} (total ${loaded}/${total})`);
-
-                if (added === 0) break; // saturou: níveis mais fundos não trazem mais ninguém
-                if (depth === MAX_DEPTH) break;
-
-                // próximo nível: todas as combinações (a -> aa, ab, ...)
-                const next: string[] = [];
-                for (const prefix of queries) {
-                    for (const ch of CHARS) next.push(prefix + ch);
-                }
-                queries = next;
+            // Constrói TODAS as consultas de uma vez e embaralha. Além de 1 e 2 letras, sorteia
+            // trechos de 3 letras: cada rodada usa uma amostra diferente, então NÃO pega sempre os
+            // mesmos primeiros — vai variando e, com o cache, cobrindo mais gente a cada vez.
+            // Builds ALL queries at once and shuffles them. Besides 1 and 2 chars, it samples 3-char
+            // fragments: every run uses a different sample, so it does NOT always grab the same first
+            // ones — it varies and, with the cache, covers more people each time.
+            const singles = CHARS.split("");
+            const doubles: string[] = [];
+            for (const a of CHARS) for (const b of CHARS) doubles.push(a + b);
+            const triples: string[] = [];
+            for (let i = 0; i < 5000; i++) {
+                let s = "";
+                for (let j = 0; j < 3; j++) s += CHARS[Math.floor(Math.random() * CHARS.length)];
+                triples.push(s);
             }
+            const queries = shuffled([...singles, ...doubles, ...triples]);
+
+            const added = await runLevel(queries);
+            logger.info(`Varredura: +${added} (total ${loaded}/${total})`);
 
             emit(true);
         } finally {
