@@ -4,11 +4,14 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import * as DataStore from "@api/DataStore";
 import { fetchUserProfile } from "@utils/discord";
 import { Logger } from "@utils/Logger";
 import { FluxDispatcher, UserProfileStore } from "@webpack/common";
 
 import { hasCachedBadges, setCachedBadges } from "./badgeCache";
+
+const COOLDOWN_KEY = "BadgesPlus:cooldownUntil:v1";
 
 // Fila de busca de perfis, usada pelas badges ao lado do nome e pelo pesquisador.
 // Profile fetch queue, shared by the name badges and the badge search.
@@ -61,6 +64,26 @@ export function setConcurrency(n: number) {
     const value = Math.round(Number(n));
     if (!Number.isFinite(value)) return;
     maxConcurrency = Math.max(1, Math.min(MAX_CONCURRENCY, value));
+}
+
+/**
+ * Lê o cooldown salvo no disco. Sem isso, toda vez que o app reinicia ele já volta martelando o
+ * Discord e o limite nunca libera. / Reads the cooldown saved on disk. Without it, every app restart
+ * immediately hammers Discord again and the limit never clears.
+ */
+export async function initCooldown() {
+    try {
+        const until = await DataStore.get<number>(COOLDOWN_KEY);
+        if (typeof until === "number" && until > Date.now()) {
+            pausedUntil = Math.max(pausedUntil, until);
+            logger.warn(`Conta ainda em cooldown até ${new Date(until).toLocaleTimeString()} / account still cooling down until then`);
+        }
+    } catch { /* ignore */ }
+}
+
+function setCooldown(until: number) {
+    pausedUntil = Math.max(pausedUntil, until);
+    void DataStore.set(COOLDOWN_KEY, until).catch(() => { });
 }
 
 /** Perfil já carregado, já veio do cache, ou falhou / profile already loaded, already cached, or failed */
@@ -167,7 +190,7 @@ async function worker() {
                 const waitMs = Math.max(expMs, retryMs);
 
                 delay = Math.min(MAX_DELAY, Math.round(delay * 1.25) + 150);
-                pausedUntil = Math.max(pausedUntil, Date.now() + waitMs);
+                setCooldown(Date.now() + waitMs);
                 logger.warn(`Rate limited: esperando ${Math.round(waitMs / 1000)}s (429 seguidos: ${consecutive429})`);
 
                 // devolve pro FIM da fila: não ficar churnando as mesmas contas na frente

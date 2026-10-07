@@ -16,7 +16,7 @@ import type { ReactNode } from "react";
 
 import { ensureCacheLoaded, flush } from "./badgeCache";
 import { t } from "./i18n";
-import { clearQueue, setConcurrency, setMinDelay } from "./profileQueue";
+import { clearQueue, initCooldown, setConcurrency, setMinDelay } from "./profileQueue";
 import { openSearchBadges } from "./SearchModal";
 import { settings } from "./settings";
 import { UserBadges } from "./UserBadges";
@@ -82,6 +82,7 @@ export default definePlugin({
         setMinDelay(settings.store.loadSpeed);
         setConcurrency(settings.store.loadConcurrency);
         void ensureCacheLoaded();
+        void initCooldown();
 
         addMessageDecoration("vc-badgesplus", props =>
             props.message?.author
