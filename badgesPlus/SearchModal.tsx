@@ -4,7 +4,6 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { openUserProfile } from "@utils/discord";
 import { classes } from "@utils/misc";
 import { RenderModalProps, User } from "@vencord/discord-types";
 import { findByPropsLazy } from "@webpack";
@@ -41,7 +40,16 @@ const RelationshipActions = findByPropsLazy("sendRequest", "addRelationship") as
     sendRequest?: (data: { discordTag: string; }) => void;
 } | undefined;
 
-/** Manda um "oi" na DM / sends a "hi" in the DM */
+/** Abre o chat (DM) com a pessoa / opens the DM chat with the person */
+function openDm(userId: string) {
+    try {
+        (ChannelActionCreators as any).openPrivateChannel({ recipientIds: [userId], navigateToChannel: true });
+    } catch (e) {
+        console.error("[BadgesPlus] falha ao abrir a DM / failed to open the DM", e);
+    }
+}
+
+/** Manda um "oi" na DM e já pula pra conversa / sends a "hi" in the DM and jumps to the chat */
 async function sendHi(userId: string) {
     try {
         let channelId: string | undefined = (ChannelActionCreators as any)?.getDMFromUserId?.(userId);
@@ -52,6 +60,7 @@ async function sendHi(userId: string) {
         if (!channelId) throw new Error("canal não encontrado");
 
         MessageActions.sendMessage(channelId, { content: "oi", tts: false, invalidEmojis: [], validNonShortcutEmojis: [] });
+        openDm(userId);
         showToast("oi enviado!");
     } catch (e) {
         console.error("[BadgesPlus] falha ao mandar oi / failed to send hi", e);
@@ -485,7 +494,7 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
                         </div>
                         {results.slice(0, s.searchMaxResults).map(m => (
                             <div key={m.user.id} className="vc-badgesplus-row">
-                                <div className="vc-badgesplus-person" onClick={() => openUserProfile(m.user.id)}>
+                                <div className="vc-badgesplus-person" onClick={() => openDm(m.user.id)}>
                                     <img
                                         className="vc-badgesplus-avatar"
                                         src={m.user.getAvatarURL(guildId, 32)}
