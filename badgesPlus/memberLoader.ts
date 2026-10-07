@@ -58,6 +58,39 @@ export function loadedMemberCount(guildId: string) {
     return GuildMemberStore.getMemberIds(guildId).length;
 }
 
+// ---- Rolagem da lista de membros / Member list scrolling ------------------------
+// A busca do gateway (op 8) satura; quem carrega TODO MUNDO é a lista de membros, que pede em
+// FAIXAS (op 14) conforme você rola. Então a varredura também abre e "varre" a lista de membros.
+// The gateway search (op 8) saturates; what loads EVERYONE is the member list, which requests in
+// RANGES (op 14) as you scroll. So the scan also opens and "sweeps" the member list.
+
+const MEMBERS_SELECTOR = 'div[class*="members_"]';
+
+function getMemberListEl(): HTMLElement | null {
+    const el = document.querySelector(MEMBERS_SELECTOR);
+    return el instanceof HTMLElement && el.scrollHeight > el.clientHeight ? el : null;
+}
+
+function ensureMemberListOpen() {
+    if (getMemberListEl()) return;
+    const btn = document.querySelector(
+        '[aria-label="Show Member List"], [aria-label="Mostrar lista de membros"], [aria-label*="Member List"], [aria-label*="lista de membros"]'
+    );
+    if (btn instanceof HTMLElement) btn.click();
+}
+
+let sweepPos = 0;
+function sweepMemberList() {
+    const el = getMemberListEl();
+    if (!el) return false;
+    const max = el.scrollHeight - el.clientHeight;
+    if (max <= 0) return false;
+    if (sweepPos > max) sweepPos = 0;
+    el.scrollTop = sweepPos;
+    sweepPos += Math.max(200, Math.floor(el.clientHeight * 0.85));
+    return true;
+}
+
 /**
  * Puxa membros do gateway (op 8) em níveis de busca por trecho do nome: 1 letra, depois 2, depois 3.
  *
@@ -143,6 +176,7 @@ export function scanGuildMembers(
         const worker = async () => {
             while (index < queries.length && budget-- > 0 && !controller.cancelled) {
                 request(queries[index++]);
+                sweepMemberList();
                 await sleep(STEP_MS);
             }
         };
@@ -155,6 +189,17 @@ export function scanGuildMembers(
     };
 
     void (async () => {
+        let sweeping = true;
+        const sweepLoop = (async () => {
+            ensureMemberListOpen();
+            while (sweeping && !controller.cancelled) {
+                sweepMemberList();
+                refresh();
+                emit(false);
+                await sleep(250);
+            }
+        })();
+
         try {
             // Constrói TODAS as consultas de uma vez e embaralha. Além de 1 e 2 letras, sorteia
             // trechos de 3 letras: cada rodada usa uma amostra diferente, então NÃO pega sempre os
@@ -178,6 +223,8 @@ export function scanGuildMembers(
 
             emit(true);
         } finally {
+            sweeping = false;
+            await sweepLoop.catch(() => { });
             FluxDispatcher.unsubscribe("GUILD_MEMBERS_CHUNK", onChunk);
             FluxDispatcher.unsubscribe("GUILD_MEMBERS_CHUNK_BATCH", onBatch);
             activeScans.delete(controller);
