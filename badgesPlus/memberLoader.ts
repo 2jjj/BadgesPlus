@@ -29,6 +29,15 @@ const ALL_TIMEOUT_MS = 45000; // teto da requisição "todos os membros"
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+/** Embaralha no lugar (Fisher-Yates) / shuffles in place */
+function shuffled<T>(input: T[]): T[] {
+    for (let i = input.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [input[i], input[j]] = [input[j], input[i]];
+    }
+    return input;
+}
+
 export interface MemberScanProgress {
     loaded: number;
     total: number;
@@ -182,7 +191,9 @@ export function scanGuildMembers(
             }
 
             // 2) fatia por prefixo em paralelo / parallel prefix fan-out
-            const queue: string[] = CHARS.split("");
+            // Ordem embaralhada: se parar no meio, não fica sempre nos mesmos prefixos.
+            // Shuffled order: if it stops halfway, it won't always be the same prefixes.
+            const queue: string[] = shuffled(CHARS.split(""));
             const seen = new Set(queue);
             let budget = REQUEST_BUDGET;
 

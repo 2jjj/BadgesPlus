@@ -26,6 +26,15 @@ interface MemberEntry {
     done: boolean;
 }
 
+/** Embaralha no lugar (Fisher-Yates) / shuffles in place */
+function shuffle<T>(input: T[]): T[] {
+    for (let i = input.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [input[i], input[j]] = [input[j], input[i]];
+    }
+    return input;
+}
+
 /** Recalcula quando perfis, membros ou a fila mudam / Recomputes when profiles, members or the queue change */
 function useGuildMembers(guildId: string, includeBots: boolean) {
     const [tick, setTick] = useState(0);
@@ -169,7 +178,9 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
     ]);
 
     const missing = filtered.filter(m => !m.done);
-    const loadMissing = () => queueProfiles(missing.map(m => m.user.id));
+    // Embaralha também no botão manual, pela mesma razão do timer.
+    // Shuffle the manual button too, same reason as the timer.
+    const loadMissing = () => queueProfiles(shuffle(missing.map(m => m.user.id)));
 
     // ids que casam com o filtro de nome/tamanho, sempre atualizado pro timer ler
     // ids matching the name/length filter, kept fresh for the timer to read
@@ -210,15 +221,21 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
             const allMissing = allIds.filter(id => !isDone(id));
             if (!allMissing.length) return;
 
-            let ordered = allMissing;
+            let ordered: string[];
 
             const priorityIds = filteredIdsRef.current;
             if (hasTextFilter && priorityIds.length && priorityIds.length < allIds.length) {
+                // Com filtro: quem casa primeiro; o resto embaralhado.
+                // With a filter: matches first; the rest shuffled.
                 const prioritySet = new Set(priorityIds);
                 ordered = [
                     ...allMissing.filter(id => prioritySet.has(id)),
-                    ...allMissing.filter(id => !prioritySet.has(id))
+                    ...shuffle(allMissing.filter(id => !prioritySet.has(id)))
                 ];
+            } else {
+                // Sem filtro: embaralha pra NÃO pegar sempre os mesmos de cima.
+                // Without a filter: shuffle so it does NOT always grab the same top ones.
+                ordered = shuffle([...allMissing]);
             }
 
             const limit = s.searchAutoLoadLimit;
