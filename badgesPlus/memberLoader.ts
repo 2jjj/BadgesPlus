@@ -10,33 +10,23 @@ import { FluxDispatcher, GuildMemberCountStore, GuildMemberStore } from "@webpac
 
 const logger = new Logger("BadgesPlus");
 
-// Módulo de ações de membro do gateway (o mesmo que a lista de membros do Discord usa).
-// Gateway member action module (the same one Discord's member list uses).
+// Módulo nativo de pedido de membros (o mesmo que a lista de membros usa). É o caminho que
+// comprovadamente funciona pra puxar membros além dos ~100 iniciais.
+// Native member-request module (the same one the member list uses). It's the path that provably
+// works to pull members beyond the initial ~100.
 const GuildActions = findByPropsLazy("requestMembers", "requestMembersById") as {
     requestMembers?: (guildId: string, query?: string, limit?: number, includePresences?: boolean) => void;
 } | undefined;
 
-// Caracteres usados para "fatiar" a busca, igual à busca da lista de membros do Discord.
-// Characters used to "slice" the search, like Discord's own member list search.
 const CHARS = "abcdefghijklmnopqrstuvwxyz0123456789._-";
 const PAGE = 100;
 const MAX_DEPTH = 3;
-const REQUEST_BUDGET = 12000; // teto de segurança / safety cap
-const CONCURRENCY = 4; // requisições em voo ao mesmo tempo / requests in flight at once
-const SETTLE_MS = 800; // tempo esperando os chunks de cada consulta / wait per query
-const ALL_IDLE_MS = 1500; // janela ociosa da requisição "todos os membros"
-const ALL_TIMEOUT_MS = 45000; // teto da requisição "todos os membros"
+const REQUEST_BUDGET = 9000;
+const CONCURRENCY = 6;
+const STEP_MS = 90; // intervalo entre despachos / gap between dispatches
+const SETTLE_MS = 900; // espera os chunks do nível chegarem / wait for the level's chunks
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
-
-/** Embaralha no lugar (Fisher-Yates) / shuffles in place */
-function shuffled<T>(input: T[]): T[] {
-    for (let i = input.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [input[i], input[j]] = [input[j], input[i]];
-    }
-    return input;
-}
 
 export interface MemberScanProgress {
     loaded: number;
@@ -60,24 +50,18 @@ export function loadedMemberCount(guildId: string) {
     return GuildMemberStore.getMemberIds(guildId).length;
 }
 
-interface Probe {
-    query: string;
-    hits: number;
-    lastAt: number;
-}
-
 /**
- * Puxa o máximo de membros possível direto do gateway. As requisições vão pro gateway (op 8),
- * não pra REST, então NÃO consomem o limite de perfil (que é o que as badges de Nitro usam) —
- * dá pra carregar membros e perfis em paralelo sem brigar pelo mesmo bucket.
- * Pulls as many members as possible straight from the gateway. Requests go to the gateway (op 8),
- * not REST, so they do NOT use the profile limit (the one the Nitro badges use) — members and
- * profiles can load side by side without fighting for the same bucket.
+ * Puxa membros do gateway (op 8) em níveis de busca por trecho do nome: 1 letra, depois 2, depois 3.
  *
- * Estratégia / strategy:
- *  1. Pede "todos os membros" de uma vez (query vazia). O Discord manda em chunks.
- *  2. Se ainda faltar gente, fatia por prefixo (a, b, ..., aa, ab, ...) em paralelo, aprofundando
- *     só quando uma página volta cheia (100), que é o sinal de que ainda tem gente naquele prefixo.
+ * IMPORTANTE: o Discord manda os chunks de membro no evento em lote SEM o nonce, então não dá pra
+ * saber por requisição se a página encheu. Por isso expandimos TODOS os nós um nível (BFS) e medimos
+ * o quanto AQUELE NÍVEL inteiro cresceu: enquanto um nível trouxer gente nova, descemos mais.
+ *
+ * Pulls members from the gateway (op 8) in levels of substring search: 1 char, then 2, then 3.
+ *
+ * IMPORTANT: Discord sends member chunks in the batch event WITHOUT the nonce, so we can't tell per
+ * request whether the page filled up. So we expand EVERY node one level (BFS) and measure how much
+ * that WHOLE LEVEL grew: as long as a level brings new people, we go deeper.
  */
 export function scanGuildMembers(
     guildId: string,
@@ -94,10 +78,8 @@ export function scanGuildMembers(
         try { return GuildMemberCountStore?.getMemberCount(guildId) ?? 0; } catch { return 0; }
     })();
 
-    const probes = new Map<string, Probe>();
     let loaded = loadedMemberCount(guildId);
     let lastEmit = 0;
-    let lastActivity = Date.now();
 
     const emit = (done: boolean) => {
         const now = Date.now();
@@ -111,62 +93,31 @@ export function scanGuildMembers(
         if (next > loaded) loaded = next;
     };
 
-    const dispatchProbe = (query: string) => {
-        const nonce = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-        probes.set(nonce, { query, hits: 0, lastAt: Date.now() });
+    const request = (query: string) => {
         try {
+            if (GuildActions?.requestMembers) {
+                GuildActions.requestMembers(guildId, query, PAGE, false);
+                return;
+            }
             FluxDispatcher.dispatch({
                 type: "GUILD_MEMBERS_REQUEST",
                 guildId,
                 guildIds: [guildId],
                 query,
-                limit: query ? PAGE : 0,
-                presences: false,
-                includePresences: false,
-                nonce
+                limit: PAGE,
+                presences: false
             });
         } catch (e) {
-            probes.delete(nonce);
             logger.error("Falha ao pedir membros / Failed to request members", e);
         }
-    };
-
-    const requestAll = () => {
-        lastActivity = Date.now();
-        try {
-            // A busca vazia (todos os membros) precisa da ação nativa do cliente.
-            // The empty query (all members) needs the client's native action.
-            if (GuildActions?.requestMembers) {
-                GuildActions.requestMembers(guildId, "", 0, false);
-                return;
-            }
-        } catch (e) {
-            logger.error("Falha no pedido 'todos os membros' / Failed the all-members request", e);
-        }
-        // fallback: dispara pelo fluxo / fall back to flux
-        dispatchProbe("");
     };
 
     const onChunk = (e: any) => {
         const gid = e?.guildId ?? e?.guild_id ?? e?.guildID;
         if (gid && gid !== guildId) return;
-
-        lastActivity = Date.now();
-
-        const nonce = e?.nonce;
-        const hits = Array.isArray(e?.members)
-            ? e.members.length
-            : Array.isArray(e?.memberIds) ? e.memberIds.length : 0;
-        const probe = nonce != null ? probes.get(nonce) : undefined;
-        if (probe) {
-            probe.hits += hits;
-            probe.lastAt = Date.now();
-        }
-
         refresh();
         emit(false);
     };
-
     const onBatch = (e: any) => {
         const chunks = Array.isArray(e?.chunks) ? e.chunks : [];
         for (const chunk of chunks) onChunk(chunk);
@@ -175,63 +126,47 @@ export function scanGuildMembers(
     FluxDispatcher.subscribe("GUILD_MEMBERS_CHUNK", onChunk);
     FluxDispatcher.subscribe("GUILD_MEMBERS_CHUNK_BATCH", onBatch);
 
+    let budget = REQUEST_BUDGET;
+
+    const runLevel = async (queries: string[]) => {
+        const before = loadedMemberCount(guildId);
+        let index = 0;
+
+        const worker = async () => {
+            while (index < queries.length && budget-- > 0 && !controller.cancelled) {
+                request(queries[index++]);
+                await sleep(STEP_MS);
+            }
+        };
+
+        await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+        await sleep(SETTLE_MS);
+        refresh();
+        emit(false);
+        return loaded - before;
+    };
+
     void (async () => {
         try {
-            // 1) todos os membros de uma vez / all members in one go
-            if (!controller.cancelled) {
-                requestAll();
-                const started = Date.now();
-                while (!controller.cancelled && Date.now() - started < ALL_TIMEOUT_MS) {
-                    await sleep(250);
-                    refresh();
-                    emit(false);
-                    if (total && loaded >= total) break;
-                    if (Date.now() - lastActivity >= ALL_IDLE_MS) break;
-                }
-            }
+            let queries = CHARS.split("");
 
-            // 2) fatia por prefixo em paralelo / parallel prefix fan-out
-            // Ordem embaralhada: se parar no meio, não fica sempre nos mesmos prefixos.
-            // Shuffled order: if it stops halfway, it won't always be the same prefixes.
-            const queue: string[] = shuffled(CHARS.split(""));
-            const seen = new Set(queue);
-            let budget = REQUEST_BUDGET;
-
-            while (!controller.cancelled && budget > 0 && (queue.length || probes.size)) {
+            for (let depth = 1; depth <= MAX_DEPTH && !controller.cancelled && budget > 0; depth++) {
                 if (total && loaded >= total) break;
 
-                // mantém CONCURRENCY consultas em voo / keep CONCURRENCY queries in flight
-                while (probes.size < CONCURRENCY && queue.length && budget-- > 0 && !controller.cancelled) {
-                    dispatchProbe(queue.shift()!);
-                    await sleep(Math.max(50, Math.round(gap / CONCURRENCY)));
+                const added = await runLevel(queries);
+                logger.info(`Varredura nível ${depth}: +${added} (total ${loaded}/${total})`);
+
+                if (added === 0) break; // saturou: níveis mais fundos não trazem mais ninguém
+                if (depth === MAX_DEPTH) break;
+
+                // próximo nível: todas as combinações (a -> aa, ab, ...)
+                const next: string[] = [];
+                for (const prefix of queries) {
+                    for (const ch of CHARS) next.push(prefix + ch);
                 }
-
-                await sleep(120);
-
-                const now = Date.now();
-                for (const [nonce, probe] of [...probes]) {
-                    if (now - probe.lastAt < SETTLE_MS) continue;
-                    probes.delete(nonce);
-                    // página cheia = ainda tem gente nesse prefixo; desce um nível
-                    // full page = there are still people with that prefix; go deeper
-                    if (probe.query && probe.hits >= PAGE && probe.query.length < MAX_DEPTH) {
-                        for (const char of CHARS) {
-                            const next = probe.query + char;
-                            if (!seen.has(next)) {
-                                seen.add(next);
-                                queue.push(next);
-                            }
-                        }
-                    }
-                }
-
-                refresh();
-                emit(false);
+                queries = next;
             }
 
-            // deixa os últimos chunks chegarem / let the last chunks land
-            await sleep(SETTLE_MS);
-            refresh();
             emit(true);
         } finally {
             FluxDispatcher.unsubscribe("GUILD_MEMBERS_CHUNK", onChunk);
