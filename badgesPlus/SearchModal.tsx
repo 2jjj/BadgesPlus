@@ -12,8 +12,8 @@ import {
     useEffect, useMemo, useRef, UserProfileStore, UserStore, useState
 } from "@webpack/common";
 
-import { getCachedBadges, onCacheChange } from "./badgeCache";
-import { badgeIconUrl, badgeSortRank, getBadgeLabel, getCategory, getFlagBadges, getTooltip, isCategoryEnabled, SimpleBadge } from "./badges";
+import { getBoostIcon, getCachedBadges, onCacheChange } from "./badgeCache";
+import { badgeIconUrl, badgeSortRank, boostLevelFromPremiumSince, getBadgeLabel, getCategory, getFlagBadges, getTooltip, isCategoryEnabled, makeBoostBadge, SimpleBadge } from "./badges";
 import { plural, t } from "./i18n";
 import { cancelAllMemberScans, MemberScanProgress, scanGuildMembers } from "./memberLoader";
 import { clearQueue, getQueueStats, isDone, onQueueChange, pendingCount, queueProfiles } from "./profileQueue";
@@ -64,10 +64,20 @@ function useGuildMembers(guildId: string, includeBots: boolean) {
             if (!user || (user.bot && !includeBots)) continue;
 
             const profile = UserProfileStore.getUserProfile(id);
+            let badges = (profile?.badges as SimpleBadge[] | undefined) ?? getCachedBadges(id) ?? getFlagBadges(user);
+
+            // Badge de impulso sem buscar perfil: vem do premiumSince do membro. O ícone é aprendido
+            // de qualquer perfil de booster já carregado. / Boost badge without a profile fetch: it
+            // comes from the member's premiumSince. The icon is learned from any booster profile cached.
+            const member = GuildMemberStore.getMember(guildId, id);
+            const level = boostLevelFromPremiumSince((member as any)?.premiumSince);
+            const boost = makeBoostBadge(level, getBoostIcon(level));
+            if (boost && !badges.some(b => b.id === boost.id)) badges = [...badges, boost];
+
             entries.push({
                 user,
                 name: GuildMemberStore.getNick(guildId, id) ?? (user as any).globalName ?? user.username,
-                badges: (profile?.badges as SimpleBadge[] | undefined) ?? getCachedBadges(id) ?? getFlagBadges(user),
+                badges,
                 done: isDone(id)
             });
         }

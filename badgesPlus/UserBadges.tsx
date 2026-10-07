@@ -5,14 +5,14 @@
  */
 
 import { User } from "@vencord/discord-types";
-import { Tooltip, useEffect, useReducer, UserProfileStore, UserStore, useStateFromStores } from "@webpack/common";
+import { GuildMemberStore, Tooltip, useEffect, useReducer, UserProfileStore, UserStore, useStateFromStores } from "@webpack/common";
 
-import { getCachedBadges, onCacheChange } from "./badgeCache";
-import { badgeIconUrl, filterAndSortBadges, getBadgeLabel, getFlagBadges, getTooltip, SimpleBadge } from "./badges";
+import { getBoostIcon, getCachedBadges, onCacheChange } from "./badgeCache";
+import { badgeIconUrl, boostLevelFromPremiumSince, filterAndSortBadges, getBadgeLabel, getFlagBadges, getTooltip, makeBoostBadge, SimpleBadge } from "./badges";
 import { queueProfiles } from "./profileQueue";
 import { settings } from "./settings";
 
-export function UserBadges({ user, where }: { user: User; where: "chat" | "list"; }) {
+export function UserBadges({ user, where, guildId }: { user: User; where: "chat" | "list"; guildId?: string; }) {
     // settings.use: reage na hora a mudanças nas configurações / re-renders as soon as a setting changes
     const s = settings.use();
 
@@ -39,7 +39,18 @@ export function UserBadges({ user, where }: { user: User; where: "chat" | "list"
 
     if (!allowed) return null;
 
-    const all = filterAndSortBadges(profileBadges ?? getFlagBadges(user));
+    let badges = profileBadges ?? getFlagBadges(user);
+
+    // Impulso sem buscar perfil: nível pelo premiumSince do membro + ícone aprendido do cache.
+    // Boost without a profile fetch: level from the member's premiumSince + icon learned from the cache.
+    if (guildId) {
+        const member = GuildMemberStore.getMember(guildId, user.id);
+        const level = boostLevelFromPremiumSince((member as any)?.premiumSince);
+        const boost = makeBoostBadge(level, getBoostIcon(level));
+        if (boost && !badges.some(b => b.id === boost.id)) badges = [...badges, boost];
+    }
+
+    const all = filterAndSortBadges(badges);
     if (!all.length) return null;
 
     const shown = s.maxBadges > 0 ? all.slice(0, s.maxBadges) : all;

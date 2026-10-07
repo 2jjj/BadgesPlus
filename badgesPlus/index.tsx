@@ -84,10 +84,14 @@ export default definePlugin({
         void ensureCacheLoaded();
 
         addMessageDecoration("vc-badgesplus", props =>
-            props.message?.author ? <UserBadges user={props.message.author} where="chat" /> : null
+            props.message?.author
+                ? <UserBadges user={props.message.author} where="chat" guildId={props.channel?.guild_id ?? undefined} />
+                : null
         );
-        addMemberListDecorator("vc-badgesplus", ({ user }) =>
-            user ? <UserBadges user={user} where="list" /> : null
+        addMemberListDecorator("vc-badgesplus", ({ user, type }) =>
+            user
+                ? <UserBadges user={user} where="list" guildId={type === "guild" ? (SelectedGuildStore.getGuildId() ?? undefined) : undefined} />
+                : null
         );
     },
 
