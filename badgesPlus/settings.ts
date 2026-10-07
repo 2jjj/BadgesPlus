@@ -191,7 +191,7 @@ export const settings = definePluginSettings({
         {
             type: OptionType.SLIDER,
             markers: [1, 2, 3, 4, 5, 6],
-            default: 3,
+            default: 2,
             stickToMarkers: true,
             onChange: (n: number) => setConcurrency(n)
         },
