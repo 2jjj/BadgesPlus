@@ -370,7 +370,7 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
                         ? (
                             <span>
                                 {t(`Loading… ${pending} left`, `Carregando… ${pending} restantes`)}{" · "}
-                                <button className="vc-badgesplus-link" onClick={clearQueue}>{t("Stop", "Parar")}</button>
+                                <button className="vc-badgesplus-link" onClick={clearQueue}>{t("Stop profiles", "Parar perfis")}</button>
                             </span>
                         )
                         : missing.length > 0 && (
@@ -389,7 +389,7 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
                                         `Scanning members… ${scan.loaded}${scan.total ? `/${scan.total}` : ""}`,
                                         `Varrendo membros… ${scan.loaded}${scan.total ? `/${scan.total}` : ""}`
                                     )}{" · "}
-                                    <button className="vc-badgesplus-link" onClick={stopMemberScan}>{t("Stop", "Parar")}</button>
+                                    <button className="vc-badgesplus-link" onClick={stopMemberScan}>{t("Stop members", "Parar membros")}</button>
                                 </span>
                             )
                             : (
