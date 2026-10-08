@@ -246,8 +246,7 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
         setScan({ loaded: rawLoaded, total: memberCount || 0, done: false, cancelled: false });
         scanGuildMembers(
             guildId,
-            progress => setScan(progress.done ? null : progress),
-            s.memberScanSpeed
+            progress => setScan(progress.done ? null : progress)
         );
     }
 
