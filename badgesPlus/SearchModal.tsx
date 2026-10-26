@@ -28,6 +28,12 @@ interface MemberEntry {
     done: boolean;
 }
 
+// Abrir o pesquisador não pode disparar milhares de perfis sozinho (o cache tem o servidor
+// inteiro). Acima disso, o usuário usa o botão "Carregar badges".
+// Opening the search can't fire thousands of profiles by itself (the cache has the whole server).
+// Above this, the user uses the "Load badges" button.
+const OPEN_AUTO_LOAD_CAP = 500;
+
 /** Embaralha no lugar (Fisher-Yates) / shuffles in place */
 function shuffle<T>(input: T[]): T[] {
     for (let i = input.length - 1; i > 0; i--) {
@@ -410,6 +416,10 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
 
         const loadMissingNow = () => {
             const allIds = knownIdsRef.current;
+            // carregamento automático ao abrir: só em escopo pequeno; o resto é no botão
+            // automatic load on open: only in a small scope; the rest is via the button
+            if (!hasTextFilter && selected.length === 0 && allIds.length > OPEN_AUTO_LOAD_CAP) return;
+
             const allMissing = allIds.filter(id => !isDone(id));
             if (!allMissing.length) return;
 
