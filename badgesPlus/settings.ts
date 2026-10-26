@@ -204,7 +204,15 @@ export const settings = definePluginSettings({
     fetchBotProfiles: tr(
         { type: OptionType.BOOLEAN, default: false },
         ["Load bot profiles", "Carregar perfil de bots"],
-        ["Also fetches bot profiles. Leave off to save requests.", "Também busca o perfil de bots. Deixe desligado para economizar requisições."]
+        ["Also fetches bot profiles. Leave off to save requests.", "TambǸm busca o perfil de bots. Deixe desligado para economizar requisi����es."]
+    ),
+    cacheMembers: tr(
+        { type: OptionType.BOOLEAN, default: true },
+        ["Keep the member list on disk", "Guardar a lista de membros no disco"],
+        [
+            "Saves who is in each server so the search already covers everyone when you reopen Discord. You can clear it in the search window.",
+            "Salva quem est�� em cada servidor pra pesquisa j�� cobrir todo mundo quando vocǦ reabrir o Discord. Dǭ pra limpar na janela de pesquisa."
+        ]
     ),
 
     // ---- Badge search / Pesquisa de badges ------------------------------------
@@ -234,7 +242,31 @@ export const settings = definePluginSettings({
         ["Load badges when opening the search", "Carregar badges ao abrir o pesquisador"],
         [
             "Off by default: automatically loading thousands of profiles can get your account globally rate-limited (then nothing loads, not even in DMs). Turn it on if you want it, or just use the Load button.",
-            "Desligado por padrão: carregar milhares de perfis sozinho pode colocar sua conta em limite global (aí não carrega nada, nem em DM). Ligue se quiser, ou use o botão Carregar."
+            "Desligado por padrǜo: carregar milhares de perfis sozinho pode colocar sua conta em limite global (a�� nǜo carrega nada, nem em DM). Ligue se quiser, ou use o botǜo Carregar."
+        ]
+    ),
+    searchAutoLoadOnBadge: tr(
+        { type: OptionType.BOOLEAN, default: true },
+        ["Load everyone when picking a badge", "Carregar todo mundo ao escolher uma badge"],
+        [
+            "When you select a badge, it starts loading the profiles of everyone in the current scope (the whole server if there's no name filter). Results fill in as profiles arrive.",
+            "Quando vocǦ escolhe uma badge, ele come��a a carregar os perfis de todo mundo no escopo atual (o servidor inteiro se nǜo tiver filtro de nome). Os resultados vǜo aparecendo conforme os perfis chegam."
+        ]
+    ),
+    searchAutoScanMembers: tr(
+        { type: OptionType.BOOLEAN, default: true },
+        ["Scan the whole server when filtering", "Varrer o servidor inteiro ao filtrar"],
+        [
+            "When you type a name or pick a length, it also loads the rest of the member list in the background so the filter covers everyone. You can stop it anytime.",
+            "Quando vocǦ digita um nome ou escolhe um tamanho, ele tambǸm carrega o resto da lista de membros em segundo plano pra o filtro cobrir todo mundo. Dǭ pra parar quando quiser."
+        ]
+    ),
+    searchServerMemberSearch: tr(
+        { type: OptionType.BOOLEAN, default: true },
+        ["Search names on Discord's side", "Buscar nomes no lado do Discord"],
+        [
+            "When you type 2+ letters, asks Discord to search the whole server. Finds people who haven't been loaded yet, with at most one request every 2.5s.",
+            "Quando vocǦ digita 2+ letras, pede pro Discord buscar no servidor inteiro. Acha quem ainda nǜo foi carregado, com no mǭximo uma requisi����o a cada 2,5s."
         ]
     ),
     memberScanSpeed: tr(
@@ -314,8 +346,12 @@ export const settings = definePluginSettings({
     loadSpeed: { hidden() { return !this.store.fetchProfiles && !this.store.showSearchButton; } },
     loadConcurrency: { hidden() { return !this.store.fetchProfiles; } },
     fetchBotProfiles: { hidden() { return !this.store.fetchProfiles; } },
+    cacheMembers: { hidden() { return !this.store.showSearchButton; } },
     searchMatchMode: { hidden() { return !this.store.showSearchButton; } },
     searchAutoLoad: { hidden() { return !this.store.showSearchButton; } },
+    searchAutoLoadOnBadge: { hidden() { return !this.store.showSearchButton; } },
+    searchAutoScanMembers: { hidden() { return !this.store.showSearchButton; } },
+    searchServerMemberSearch: { hidden() { return !this.store.showSearchButton; } },
     searchAutoLoadLimit: { hidden() { return !this.store.showSearchButton; } },
     memberScanSpeed: { hidden() { return !this.store.showSearchButton; } },
     searchShowMessageButton: { hidden() { return !this.store.showSearchButton; } },

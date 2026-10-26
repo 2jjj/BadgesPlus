@@ -5,9 +5,13 @@
  */
 
 import { Logger } from "@utils/Logger";
+import { findByPropsLazy } from "@webpack";
 import { FluxDispatcher, GuildMemberCountStore, GuildMemberStore } from "@webpack/common";
 
 const logger = new Logger("BadgesPlus");
+const GuildActions = findByPropsLazy("requestMembers", "requestMembersById") as {
+    requestMembers?: (guildId: string, query?: string, limit?: number, includePresences?: boolean) => void;
+} | undefined;
 
 const MEMBERS_SELECTOR = 'div[class*="members_"]';
 const MAX_MS = 20 * 60 * 1000; // teto de tempo por varredura / per-scan time cap
@@ -33,13 +37,57 @@ export interface MemberScanOptions {
 }
 
 const activeScans = new Set<MemberScanController>();
+const activeGuildScans = new Map<string, MemberScanController>();
 
 export function cancelAllMemberScans() {
     for (const scan of activeScans) scan.cancel();
 }
 
+export function isScanningGuild(guildId: string) {
+    return activeGuildScans.has(guildId);
+}
+
 export function loadedMemberCount(guildId: string) {
     return GuildMemberStore.getMemberIds(guildId).length;
+}
+
+// Busca no servidor inteiro pelo gateway (op 8), uma por vez e com intervalo.
+// O BFS antigo saturava; aqui é só uma consulta por vez, disparada pelo filtro.
+// Server-wide search via gateway (op 8), one at a time with a gap. The old BFS saturated;
+// this is a single query at a time, triggered by the filter.
+const SEARCH_GAP_MS = 2500;
+let searchChain: Promise<void> = Promise.resolve();
+let lastSearchAt = 0;
+
+export function searchGuildMembers(guildId: string, query: string, limit = 100): Promise<void> {
+    const q = query.trim();
+    if (q.length < 2) return Promise.resolve();
+
+    searchChain = searchChain.then(async () => {
+        const wait = SEARCH_GAP_MS - (Date.now() - lastSearchAt);
+        if (wait > 0) await sleep(wait);
+        lastSearchAt = Date.now();
+
+        try {
+            if (GuildActions?.requestMembers) {
+                GuildActions.requestMembers(guildId, q, limit, false);
+                return;
+            }
+
+            FluxDispatcher.dispatch({
+                type: "GUILD_MEMBERS_REQUEST",
+                guildId,
+                guildIds: [guildId],
+                query: q,
+                limit,
+                presences: false
+            });
+        } catch (e) {
+            logger.error("Falha na busca de membros / member search failed", e);
+        }
+    }).catch(() => { });
+
+    return searchChain;
 }
 
 // A lista de membros do Discord carrega em FAIXAS conforme você rola (é o mesmo mecanismo do
@@ -73,11 +121,15 @@ export function scanGuildMembers(
     onProgress: (progress: MemberScanProgress) => void,
     options: MemberScanOptions = {}
 ): MemberScanController {
+    const existing = activeGuildScans.get(guildId);
+    if (existing) return existing;
+
     const controller: MemberScanController = {
         cancelled: false,
         cancel() { controller.cancelled = true; }
     };
     activeScans.add(controller);
+    activeGuildScans.set(guildId, controller);
 
     const total = (() => {
         try { return GuildMemberCountStore?.getMemberCount(guildId) ?? 0; } catch { return 0; }
@@ -163,6 +215,7 @@ export function scanGuildMembers(
             FluxDispatcher.unsubscribe("GUILD_MEMBERS_CHUNK", onChunk);
             FluxDispatcher.unsubscribe("GUILD_MEMBERS_CHUNK_BATCH", onChunk);
             activeScans.delete(controller);
+            if (activeGuildScans.get(guildId) === controller) activeGuildScans.delete(guildId);
         }
     })();
 

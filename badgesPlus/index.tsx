@@ -16,6 +16,7 @@ import type { ReactNode } from "react";
 
 import { ensureCacheLoaded, flush } from "./badgeCache";
 import { t } from "./i18n";
+import { flushMemberCache } from "./memberCache";
 import { cancelAllMemberScans } from "./memberLoader";
 import { clearQueue, initCooldown, setConcurrency, setMinDelay } from "./profileQueue";
 import { openSearchBadges } from "./SearchModal";
@@ -101,6 +102,7 @@ export default definePlugin({
         cancelAllMemberScans();
         clearQueue();
         void flush();
+        void flushMemberCache();
         removeMessageDecoration("vc-badgesplus");
         removeMemberListDecorator("vc-badgesplus");
     }

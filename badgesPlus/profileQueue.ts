@@ -44,6 +44,7 @@ let running = false;
 let pausedUntil = 0;
 let okCount = 0;
 let consecutive429 = 0;
+let successesSince429 = 0;
 
 // Se o Discord mandar 429, cada vez espaçamos mais (10s, 20s, 40s... até 5min). Insistir a cada
 // poucos segundos, quando a conta está em limite GLOBAL, só mantém o limite vivo — e aí NADA carrega.
@@ -176,7 +177,9 @@ async function worker() {
         inFlight.add(id);
 
         const wait = pausedUntil - Date.now();
-        if (wait > 0) await sleep(wait);
+        // jitter no fim do cooldown: os workers não voltam todos no mesmo instante
+        // jitter after the cooldown: workers don't all come back at the exact same moment
+        if (wait > 0) await sleep(wait + Math.random() * 750);
 
         try {
             await fetchUserProfile(id);
@@ -188,7 +191,15 @@ async function worker() {
             retries.delete(id);
             failed.delete(id);
             okCount++;
-            consecutive429 = 0;
+            // só zera o backoff depois de uma sequência de sucessos; um sucesso isolado
+            // entre 429s não pode derrubar o freio de novo.
+            // only clear the backoff after a streak of successes; a single success between
+            // 429s must not reset the brake again.
+            successesSince429++;
+            if (successesSince429 >= SPEEDUP_AFTER) {
+                consecutive429 = 0;
+                successesSince429 = 0;
+            }
             if (++streak >= SPEEDUP_AFTER) {
                 streak = 0;
                 delay = Math.max(minDelay, Math.round(delay * 0.8));
@@ -202,6 +213,7 @@ async function worker() {
             if (e?.status === 429) {
                 // Backoff exponencial, com piso no retry_after que o Discord mandar.
                 // Exponential backoff, floored by Discord's retry_after.
+                successesSince429 = 0;
                 consecutive429++;
                 const expMs = Math.min(MAX_BACKOFF, 10000 * 2 ** Math.min(consecutive429 - 1, 5));
                 const retryMs = (Number(e?.body?.retry_after) || 0) * 1000;

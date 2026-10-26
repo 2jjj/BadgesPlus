@@ -16,7 +16,8 @@ import {
 import { getBoostIcon, getCachedBadges, onCacheChange } from "./badgeCache";
 import { badgeIconUrl, badgeSortRank, boostLevelFromPremiumSince, getBadgeLabel, getCategory, getFlagBadges, getTooltip, isCategoryEnabled, makeBoostBadge, SimpleBadge } from "./badges";
 import { plural, t } from "./i18n";
-import { cancelAllMemberScans, MemberScanProgress, scanGuildMembers } from "./memberLoader";
+import { CachedMember, captureMemberCache, clearMemberCache, ensureMemberCacheLoaded, getCachedMembers, onMemberCacheChange } from "./memberCache";
+import { cancelAllMemberScans, isScanningGuild, MemberScanProgress, scanGuildMembers, searchGuildMembers } from "./memberLoader";
 import { clearQueue, getQueueStats, isDone, onQueueChange, pendingCount, queueProfiles, retryFailed } from "./profileQueue";
 import { settings } from "./settings";
 
@@ -40,6 +41,21 @@ function shuffle<T>(input: T[]): T[] {
 const RelationshipActions = findByPropsLazy("sendRequest", "addRelationship") as {
     sendRequest?: (data: { discordTag: string; }) => void;
 } | undefined;
+
+/** Usuário "de mentira" pra quem só existe no cache / fake user for cache-only members */
+function cachedUser(member: CachedMember): User {
+    return {
+        id: member.id,
+        username: member.username,
+        discriminator: member.discriminator ?? "0",
+        globalName: member.globalName,
+        bot: member.bot,
+        publicFlags: member.publicFlags,
+        avatar: "",
+        getAvatarURL: () => member.avatarUrl,
+        getDefaultAvatarURL: () => member.avatarUrl
+    } as unknown as User;
+}
 
 /** Abre o chat (DM) com a pessoa / opens the DM chat with the person */
 function openDm(userId: string) {
@@ -103,7 +119,7 @@ function addFriend(user: User) {
 }
 
 /** Recalcula quando perfis, membros ou a fila mudam / Recomputes when profiles, members or the queue change */
-function useGuildMembers(guildId: string, includeBots: boolean) {
+function useGuildMembers(guildId: string, includeBots: boolean, cachedMembers: CachedMember[]) {
     const [tick, setTick] = useState(0);
 
     useEffect(() => {
@@ -135,30 +151,47 @@ function useGuildMembers(guildId: string, includeBots: boolean) {
 
     return useMemo(() => {
         const entries: MemberEntry[] = [];
-        for (const id of GuildMemberStore.getMemberIds(guildId)) {
-            const user = UserStore.getUser(id);
-            if (!user || (user.bot && !includeBots)) continue;
+        const seen = new Set<string>();
+        const cachedById = new Map(cachedMembers.map(member => [member.id, member]));
 
+        const push = (id: string, user: User, cached?: CachedMember) => {
+            const member: any = GuildMemberStore.getMember(guildId, id);
             const profile = UserProfileStore.getUserProfile(id);
             let badges = (profile?.badges as SimpleBadge[] | undefined) ?? getCachedBadges(id) ?? getFlagBadges(user);
 
             // Badge de impulso sem buscar perfil: vem do premiumSince do membro. O ícone é aprendido
             // de qualquer perfil de booster já carregado. / Boost badge without a profile fetch: it
             // comes from the member's premiumSince. The icon is learned from any booster profile cached.
-            const member = GuildMemberStore.getMember(guildId, id);
-            const level = boostLevelFromPremiumSince((member as any)?.premiumSince);
+            const level = boostLevelFromPremiumSince(member?.premiumSince ?? cached?.premiumSince);
             const boost = makeBoostBadge(level, getBoostIcon(level));
             if (boost && !badges.some(b => b.id === boost.id)) badges = [...badges, boost];
 
             entries.push({
                 user,
-                name: GuildMemberStore.getNick(guildId, id) ?? (user as any).globalName ?? user.username,
+                name: member ? GuildMemberStore.getNick(guildId, id) ?? (user as any).globalName ?? user.username
+                    : cached?.nick ?? cached?.globalName ?? user.username,
                 badges,
                 done: isDone(id)
             });
+            seen.add(id);
+        };
+
+        for (const id of GuildMemberStore.getMemberIds(guildId)) {
+            const cached = cachedById.get(id);
+            const user = UserStore.getUser(id) ?? (cached ? cachedUser(cached) : undefined);
+            if (!user || (user.bot && !includeBots)) continue;
+            push(id, user, cached);
         }
+
+        // Quem só existe no cache (sessões anteriores) também entra no filtro.
+        // Cache-only members from previous sessions are included too.
+        for (const cached of cachedMembers) {
+            if (seen.has(cached.id) || (cached.bot && !includeBots)) continue;
+            push(cached.id, UserStore.getUser(cached.id) ?? cachedUser(cached), cached);
+        }
+
         return entries;
-    }, [guildId, includeBots, tick]);
+    }, [guildId, includeBots, tick, cachedMembers]);
 }
 
 function BadgeIcon({ badge, size, dim }: { badge: SimpleBadge; size: number; dim?: boolean; }) {
@@ -199,8 +232,10 @@ function FriendIcon() {
 function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProps: RenderModalProps; }) {
     const s = settings.use();
     const [selected, setSelected] = useState<string[]>([]);
+    const [cachedMembers, setCachedMembers] = useState<CachedMember[]>([]);
 
-    const members = useGuildMembers(guildId, s.searchIncludeBots);
+    const members = useGuildMembers(guildId, s.searchIncludeBots, s.cacheMembers ? cachedMembers : []);
+    const profilesLoaded = members.filter(member => member.done).length;
     const guild = GuildStore.getGuild(guildId);
     const memberCount = GuildMemberCountStore.getMemberCount(guildId);
     const myId = UserStore.getCurrentUser()?.id;
@@ -210,12 +245,42 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
     const [scan, setScan] = useState<MemberScanProgress | null>(null);
     const [stats, setStats] = useState(getQueueStats());
     const [profilesPaused, setProfilesPaused] = useState(false);
+    const autoScanStarted = useRef(false);
 
     // Atualiza o placar dos perfis uma vez por segundo / refresh the profile tally once a second
     useEffect(() => {
         const interval = setInterval(() => setStats(getQueueStats()), 1000);
         return () => clearInterval(interval);
     }, []);
+
+    // Carrega a lista de membros salva e mantém ela fresca enquanto o pesquisador está aberto.
+    // Loads the saved member list and keeps it fresh while the search is open.
+    useEffect(() => {
+        if (!s.cacheMembers) {
+            setCachedMembers([]);
+            return;
+        }
+
+        let active = true;
+        const update = () => {
+            if (active) setCachedMembers(getCachedMembers(guildId) ?? []);
+        };
+
+        update();
+        void ensureMemberCacheLoaded(guildId).then(() => {
+            update();
+            void captureMemberCache(guildId, true);
+        });
+
+        const unsubscribe = onMemberCacheChange(guildId, update);
+        const interval = setInterval(() => void captureMemberCache(guildId), 10000);
+
+        return () => {
+            active = false;
+            unsubscribe();
+            clearInterval(interval);
+        };
+    }, [guildId, s.cacheMembers]);
 
     // ---- filtros do pesquisador / search filters ----
     const [usernameQuery, setUsernameQuery] = useState("");
@@ -268,13 +333,24 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
         filteredIdsRef.current = filtered.map(m => m.user.id);
     }, [filtered]);
 
+    // todos os ids conhecidos (live + cache), sem o filtro / every known id (live + cache), unfiltered
+    const knownIdsRef = useRef<string[]>([]);
+    useEffect(() => {
+        knownIdsRef.current = members.map(m => m.user.id);
+    }, [members]);
+
     const hasTextFilter = usernameQuery.trim().length > 0 || lengthFilter != null;
 
     function startMemberScan() {
+        if (isScanningGuild(guildId)) return;
+        autoScanStarted.current = true;
         setScan({ loaded: rawLoaded, total: memberCount || 0, done: false, cancelled: false });
         scanGuildMembers(
             guildId,
-            progress => setScan(progress.done ? null : progress),
+            progress => {
+                setScan(progress.done ? null : progress);
+                if (progress.done) void captureMemberCache(guildId, true);
+            },
             { maxStepWaitMs: s.memberScanSpeed }
         );
     }
@@ -284,7 +360,31 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
         setScan(null);
     }
 
-    const scanning = scan != null;
+    // Quando o usuário filtra ou escolhe uma badge, garante que a lista inteira seja carregada.
+    // When the user filters or picks a badge, make sure the whole member list gets loaded.
+    useEffect(() => {
+        if (!isScanningGuild(guildId)) autoScanStarted.current = false;
+    }, [guildId, usernameQuery, lengthFilter]);
+
+    useEffect(() => {
+        if (!s.searchAutoScanMembers) return;
+        if (autoScanStarted.current) return;
+        if (!hasTextFilter && selected.length === 0) return;
+        if (isScanningGuild(guildId)) return;
+        if (memberCount > 0 && members.length >= memberCount) return;
+        startMemberScan();
+    }, [guildId, hasTextFilter, selected.length, s.searchAutoScanMembers, memberCount, members.length]);
+
+    // Digitar 2+ letras também consulta o servidor inteiro pelo gateway.
+    // Typing 2+ letters also queries the whole server through the gateway.
+    useEffect(() => {
+        if (!s.searchServerMemberSearch) return;
+        const query = usernameQuery.trim();
+        if (query.length < 2) return;
+
+        const timer = setTimeout(() => void searchGuildMembers(guildId, query), 500);
+        return () => clearTimeout(timer);
+    }, [guildId, usernameQuery, s.searchServerMemberSearch]);
 
     // Carregamento independente do React: um timer lê direto as stores e reenfileira quem ainda não
     // tem perfil. Com filtro de nome/tamanho, carrega SÓ quem casa com o filtro — assim você acha o
@@ -296,14 +396,20 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
     // Changing the filter resumes loading that "Stop profiles" had paused.
     useEffect(() => {
         setProfilesPaused(false);
-    }, [usernameQuery, lengthFilter]);
+    }, [usernameQuery, lengthFilter, selected.length]);
 
     useEffect(() => {
         if (profilesPaused) return;
-        if (!s.searchAutoLoad && !scanning && !hasTextFilter) return;
+
+        // Com uma badge escolhida, "todo mundo" inclui quem ainda não teve perfil carregado.
+        // With a badge selected, "everyone" includes members whose profiles haven't loaded yet.
+        const autoLoadWanted = s.searchAutoLoad
+            || hasTextFilter
+            || (selected.length > 0 && s.searchAutoLoadOnBadge);
+        if (!autoLoadWanted) return;
 
         const loadMissingNow = () => {
-            const allIds = GuildMemberStore.getMemberIds(guildId);
+            const allIds = knownIdsRef.current;
             const allMissing = allIds.filter(id => !isDone(id));
             if (!allMissing.length) return;
 
@@ -337,7 +443,7 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
         loadMissingNow();
         const interval = setInterval(loadMissingNow, 1000);
         return () => clearInterval(interval);
-    }, [guildId, s.searchAutoLoad, s.searchAutoLoadLimit, scanning, hasTextFilter, profilesPaused]);
+    }, [guildId, s.searchAutoLoad, s.searchAutoLoadOnBadge, s.searchAutoLoadLimit, hasTextFilter, selected.length, profilesPaused]);
 
     // Ao fechar o pesquisador, para a varredura e LIMPA a fila: não deixa carregamento de servidor
     // gigante rodando em segundo plano (era isso que estourava o limite e travava as DMs).
@@ -385,9 +491,11 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
     const toggle = (id: string) =>
         setSelected(sel => sel.includes(id) ? sel.filter(x => x !== id) : [...sel, id]);
 
-    const emptyText = s.searchMatchMode === "any"
-        ? t("Nobody has any of the selected badges.", "Ninguém tem nenhuma das badges selecionadas.")
-        : t("Nobody has all the selected badges.", "Ninguém tem todas as badges selecionadas.");
+    const emptyText = missing.length > 0
+        ? t("Nobody found yet — still loading profiles.", "Ninguém encontrado ainda — ainda carregando perfis.")
+        : s.searchMatchMode === "any"
+            ? t("Nobody has any of the selected badges.", "Ninguém tem nenhuma das badges selecionadas.")
+            : t("Nobody has all the selected badges.", "Ninguém tem todas as badges selecionadas.");
 
     return (
         <Modal
@@ -399,10 +507,18 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
             <div className="vc-badgesplus-search">
                 <div className="vc-badgesplus-search-info">
                     <span>
-                        {plural(members.length, "member loaded", "members loaded", "membro carregado", "membros carregados")}
-                        {memberCount ? t(` of ${memberCount}`, ` de ${memberCount}`) : ""}
-                        {" · "}{t(`${members.length - missing.length} with full badges`, `${members.length - missing.length} com badges completas`)}
+                        {t(`Members: ${members.length}`, `Membros: ${members.length}`)}
+                        {memberCount ? ` / ${memberCount}` : ""}
+                        {" · "}{t(`badges loaded: ${profilesLoaded}`, `badges carregadas: ${profilesLoaded}`)}
                     </span>
+                    {cachedMembers.length > 0 && (
+                        <button
+                            className="vc-badgesplus-link"
+                            onClick={() => void clearMemberCache(guildId)}
+                        >
+                            {t(`Clear cached members (${cachedMembers.length})`, `Limpar membros em cache (${cachedMembers.length})`)}
+                        </button>
+                    )}
                     {pending > 0
                         ? (
                             <span>
