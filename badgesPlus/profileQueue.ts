@@ -31,7 +31,9 @@ const SPEEDUP_AFTER = 8;
 
 const queue: string[] = [];
 const queued = new Set<string>();
+const inFlight = new Set<string>();
 const failed = new Set<string>();
+const retries = new Map<string, number>();
 const listeners = new Set<() => void>();
 
 let minDelay = 500;
@@ -41,7 +43,6 @@ let streak = 0;
 let running = false;
 let pausedUntil = 0;
 let okCount = 0;
-let failCount = 0;
 let consecutive429 = 0;
 
 // Se o Discord mandar 429, cada vez espaçamos mais (10s, 20s, 40s... até 5min). Insistir a cada
@@ -97,9 +98,19 @@ export function getQueueStats() {
     return {
         pending: queue.length,
         ok: okCount,
-        failed: failCount,
+        failed: failed.size,
         pausedMs: Math.max(0, pausedUntil - Date.now())
     };
+}
+
+/** Libera quem falhou pra tentar de novo / lets failed profiles be tried again */
+export function retryFailed(): string[] {
+    if (!failed.size) return [];
+    const ids = [...failed];
+    failed.clear();
+    retries.clear();
+    notify();
+    return ids;
 }
 
 export function onQueueChange(listener: () => void) {
@@ -113,7 +124,9 @@ export function onQueueChange(listener: () => void) {
  */
 export function queueProfiles(ids: string[], front = false) {
     for (const id of ids) {
-        if (isDone(id)) continue;
+        // já carregado, falhou, ou está buscando agora: não duplica a requisição
+        // already loaded, failed, or fetching right now: don't duplicate the request
+        if (isDone(id) || inFlight.has(id)) continue;
         if (queued.has(id)) {
             if (!front) continue;
             queue.splice(queue.indexOf(id), 1);
@@ -160,6 +173,7 @@ async function worker() {
         const id = queue.shift()!;
         queued.delete(id);
         if (isDone(id)) continue;
+        inFlight.add(id);
 
         const wait = pausedUntil - Date.now();
         if (wait > 0) await sleep(wait);
@@ -170,6 +184,9 @@ async function worker() {
             // store in the persistent cache so it doesn't start over from the top later
             const badges = UserProfileStore.getUserProfile(id)?.badges;
             if (badges) setCachedBadges(id, badges);
+            inFlight.delete(id);
+            retries.delete(id);
+            failed.delete(id);
             okCount++;
             consecutive429 = 0;
             if (++streak >= SPEEDUP_AFTER) {
@@ -179,6 +196,7 @@ async function worker() {
         } catch (e: any) {
             // evita o Discord achar que ainda está carregando / so Discord doesn't think it's still loading
             FluxDispatcher.dispatch({ type: "USER_PROFILE_FETCH_FAILURE", userId: id });
+            inFlight.delete(id);
             streak = 0;
 
             if (e?.status === 429) {
@@ -193,16 +211,31 @@ async function worker() {
                 setCooldown(Date.now() + waitMs);
                 logger.warn(`Rate limited: esperando ${Math.round(waitMs / 1000)}s (429 seguidos: ${consecutive429})`);
 
-                // devolve pro FIM da fila: não ficar churnando as mesmas contas na frente
-                // back of the line: don't keep churning the same accounts at the front
+                // devolve pro FIM da fila: não ficar churnando as mesmas contas na frente.
+                // O wait de verdade acontece no topo do loop, sem dormir duas vezes.
+                // back of the line: don't keep churning the same accounts at the front.
+                // The actual wait happens at the loop top, so we don't sleep twice.
                 queued.add(id);
                 queue.push(id);
                 notify();
-                await sleep(waitMs);
                 continue;
             }
 
-            failCount++;
+            const status = Number(e?.status) || 0;
+            const transient = !status || status >= 500;
+            const attempts = retries.get(id) ?? 0;
+
+            if (transient && attempts < 2) {
+                // erro de rede/5xx costuma passar na segunda tentativa; 404/403 não.
+                // network/5xx errors usually clear on a retry; 404/403 don't.
+                retries.set(id, attempts + 1);
+                queued.add(id);
+                queue.push(id);
+                notify();
+                await sleep(1500 + attempts * 1000);
+                continue;
+            }
+
             failed.add(id);
         }
 

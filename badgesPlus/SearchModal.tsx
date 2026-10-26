@@ -4,11 +4,12 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { openPrivateChannel, sendMessage } from "@utils/discord";
 import { classes } from "@utils/misc";
 import { RenderModalProps, User } from "@vencord/discord-types";
 import { findByPropsLazy } from "@webpack";
 import {
-    ChannelActionCreators, GuildMemberCountStore, GuildMemberStore, GuildStore, MessageActions, Modal, openModal,
+    ChannelActionCreators, ChannelStore, GuildMemberCountStore, GuildMemberStore, GuildStore, Modal, openModal,
     showToast, Tooltip, useEffect, useMemo, useRef, UserProfileStore, UserStore, useState
 } from "@webpack/common";
 
@@ -16,7 +17,7 @@ import { getBoostIcon, getCachedBadges, onCacheChange } from "./badgeCache";
 import { badgeIconUrl, badgeSortRank, boostLevelFromPremiumSince, getBadgeLabel, getCategory, getFlagBadges, getTooltip, isCategoryEnabled, makeBoostBadge, SimpleBadge } from "./badges";
 import { plural, t } from "./i18n";
 import { cancelAllMemberScans, MemberScanProgress, scanGuildMembers } from "./memberLoader";
-import { clearQueue, getQueueStats, isDone, onQueueChange, pendingCount, queueProfiles } from "./profileQueue";
+import { clearQueue, getQueueStats, isDone, onQueueChange, pendingCount, queueProfiles, retryFailed } from "./profileQueue";
 import { settings } from "./settings";
 
 interface MemberEntry {
@@ -43,7 +44,7 @@ const RelationshipActions = findByPropsLazy("sendRequest", "addRelationship") as
 /** Abre o chat (DM) com a pessoa / opens the DM chat with the person */
 function openDm(userId: string) {
     try {
-        (ChannelActionCreators as any).openPrivateChannel({ recipientIds: [userId], navigateToChannel: true });
+        openPrivateChannel(userId);
     } catch (e) {
         console.error("[BadgesPlus] falha ao abrir a DM / failed to open the DM", e);
     }
@@ -52,29 +53,52 @@ function openDm(userId: string) {
 /** Manda um "oi" na DM e já pula pra conversa / sends a "hi" in the DM and jumps to the chat */
 async function sendHi(userId: string) {
     try {
-        let channelId: string | undefined = (ChannelActionCreators as any)?.getDMFromUserId?.(userId);
-        if (!channelId) {
-            const res = await (ChannelActionCreators as any).ensurePrivateChannel(userId);
-            channelId = typeof res === "string" ? res : res?.id;
-        }
-        if (!channelId) throw new Error("canal não encontrado");
+        let channelId = ChannelStore.getDMFromUserId(userId);
 
-        MessageActions.sendMessage(channelId, { content: "oi", tts: false, invalidEmojis: [], validNonShortcutEmojis: [] });
+        if (!channelId) {
+            try {
+                const res = await (ChannelActionCreators as any).ensurePrivateChannel?.(userId);
+                channelId = typeof res === "string" ? res : res?.id;
+            } catch {
+                // sem canal: cai no fallback abaixo / no channel: falls back below
+            }
+        }
+
+        if (!channelId) {
+            // Não deu pra criar a DM: abre a conversa pra pessoa digitar.
+            // Couldn't create the DM: open the chat so the person can type.
+            openDm(userId);
+            showToast("Abri a conversa — digite e envie");
+            return;
+        }
+
+        await sendMessage(channelId, { content: "oi" });
         openDm(userId);
-        showToast("oi enviado!");
+        showToast("oi enviado!", "success");
     } catch (e) {
         console.error("[BadgesPlus] falha ao mandar oi / failed to send hi", e);
-        showToast("Falha ao mandar oi — veja o console");
+        openDm(userId);
+        showToast("Falha ao mandar oi — veja o console", "failure");
     }
 }
 
-/** Manda pedido de amizade (a API espera a tag "nome#0000") / sends a friend request */
+/** Manda pedido de amizade (nome#0000, ou só o nome novo sem discriminador) / sends a friend request */
 function addFriend(user: User) {
     try {
         const discriminator = (user as any).discriminator ?? "0";
-        RelationshipActions?.sendRequest?.({ discordTag: `${user.username}#${discriminator}` });
+        const tag = discriminator && discriminator !== "0" ? `${user.username}#${discriminator}` : user.username;
+        const res = RelationshipActions?.sendRequest?.({ discordTag: tag });
+
+        if (res && typeof (res as any).then === "function") {
+            (res as any)
+                .then(() => showToast("Pedido de amizade enviado!", "success"))
+                .catch(() => showToast("Não deu pra enviar o pedido — tente pelo perfil", "failure"));
+        } else {
+            showToast("Pedido de amizade enviado!", "success");
+        }
     } catch (e) {
         console.error("[BadgesPlus] falha ao adicionar amigo / failed to add friend", e);
+        showToast("Não deu pra adicionar — tente pelo perfil", "failure");
     }
 }
 
@@ -185,6 +209,7 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
     const rawLoaded = GuildMemberStore.getMemberIds(guildId).length;
     const [scan, setScan] = useState<MemberScanProgress | null>(null);
     const [stats, setStats] = useState(getQueueStats());
+    const [profilesPaused, setProfilesPaused] = useState(false);
 
     // Atualiza o placar dos perfis uma vez por segundo / refresh the profile tally once a second
     useEffect(() => {
@@ -231,7 +256,10 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
     const missing = filtered.filter(m => !m.done);
     // Embaralha também no botão manual, pela mesma razão do timer.
     // Shuffle the manual button too, same reason as the timer.
-    const loadMissing = () => queueProfiles(shuffle(missing.map(m => m.user.id)));
+    const loadMissing = () => {
+        setProfilesPaused(false);
+        queueProfiles(shuffle(missing.map(m => m.user.id)));
+    };
 
     // ids que casam com o filtro de nome/tamanho, sempre atualizado pro timer ler
     // ids matching the name/length filter, kept fresh for the timer to read
@@ -246,7 +274,8 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
         setScan({ loaded: rawLoaded, total: memberCount || 0, done: false, cancelled: false });
         scanGuildMembers(
             guildId,
-            progress => setScan(progress.done ? null : progress)
+            progress => setScan(progress.done ? null : progress),
+            { maxStepWaitMs: s.memberScanSpeed }
         );
     }
 
@@ -258,12 +287,19 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
     const scanning = scan != null;
 
     // Carregamento independente do React: um timer lê direto as stores e reenfileira quem ainda não
-    // tem perfil. Quando há filtro de nome/tamanho, ele PRIORIZA quem casa com o filtro — assim você
-    // acha o que quer (ex.: 3 letras) sem varrer o servidor inteiro em ordem.
+    // tem perfil. Com filtro de nome/tamanho, carrega SÓ quem casa com o filtro — assim você acha o
+    // que quer (ex.: 3 letras) sem queimar o limite de requisições com o servidor inteiro.
     // React-independent loading: a timer reads the stores directly and re-queues whoever has no
-    // profile yet. When there's a name/length filter it PRIORITIZES the matching members — so you
-    // find what you want (e.g. 3-char names) without scanning the whole server in order.
+    // profile yet. With a name/length filter it loads ONLY matching members — so you find what you
+    // want (e.g. 3-char names) without burning the rate limit on the whole server.
+    // Trocar o filtro reativa o carregamento que o "Parar perfis" tinha pausado.
+    // Changing the filter resumes loading that "Stop profiles" had paused.
     useEffect(() => {
+        setProfilesPaused(false);
+    }, [usernameQuery, lengthFilter]);
+
+    useEffect(() => {
+        if (profilesPaused) return;
         if (!s.searchAutoLoad && !scanning && !hasTextFilter) return;
 
         const loadMissingNow = () => {
@@ -274,14 +310,13 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
             let ordered: string[];
 
             const priorityIds = filteredIdsRef.current;
-            if (hasTextFilter && priorityIds.length && priorityIds.length < allIds.length) {
-                // Com filtro: quem casa primeiro; o resto embaralhado.
-                // With a filter: matches first; the rest shuffled.
+            if (hasTextFilter) {
+                // Com filtro: carrega SÓ quem passa no filtro. Antes ele enfileirava o servidor
+                // inteiro atrás dos matches — digitava "3 letras" e tomava rate limit à toa.
+                // With a filter: load ONLY matching members. Before, it queued the whole server
+                // behind the matches — typing "3 chars" hit the rate limit for nothing.
                 const prioritySet = new Set(priorityIds);
-                ordered = [
-                    ...allMissing.filter(id => prioritySet.has(id)),
-                    ...shuffle(allMissing.filter(id => !prioritySet.has(id)))
-                ];
+                ordered = allMissing.filter(id => prioritySet.has(id));
             } else {
                 // Sem filtro: embaralha pra NÃO pegar sempre os mesmos de cima.
                 // Without a filter: shuffle so it does NOT always grab the same top ones.
@@ -290,17 +325,19 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
 
             const limit = s.searchAutoLoadLimit;
             if (limit > 0) {
-                const doneCount = allIds.length - allMissing.length;
+                const doneCount = hasTextFilter
+                    ? priorityIds.length - ordered.length
+                    : allIds.length - allMissing.length;
                 ordered = ordered.slice(0, Math.max(0, limit - doneCount));
             }
 
-            if (ordered.length) queueProfiles(ordered);
+            if (ordered.length) queueProfiles(ordered, hasTextFilter);
         };
 
         loadMissingNow();
         const interval = setInterval(loadMissingNow, 1000);
         return () => clearInterval(interval);
-    }, [guildId, s.searchAutoLoad, s.searchAutoLoadLimit, scanning, hasTextFilter]);
+    }, [guildId, s.searchAutoLoad, s.searchAutoLoadLimit, scanning, hasTextFilter, profilesPaused]);
 
     // Ao fechar o pesquisador, para a varredura e LIMPA a fila: não deixa carregamento de servidor
     // gigante rodando em segundo plano (era isso que estourava o limite e travava as DMs).
@@ -370,7 +407,15 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
                         ? (
                             <span>
                                 {t(`Loading… ${pending} left`, `Carregando… ${pending} restantes`)}{" · "}
-                                <button className="vc-badgesplus-link" onClick={clearQueue}>{t("Stop profiles", "Parar perfis")}</button>
+                                <button
+                                    className="vc-badgesplus-link"
+                                    onClick={() => {
+                                        clearQueue();
+                                        setProfilesPaused(true);
+                                    }}
+                                >
+                                    {t("Stop profiles", "Parar perfis")}
+                                </button>
                             </span>
                         )
                         : missing.length > 0 && (
@@ -420,6 +465,20 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
                             )}
                         </span>
                     )}
+                    {stats.failed > 0 && (
+                        <button
+                            className="vc-badgesplus-link"
+                            onClick={() => {
+                                const ids = retryFailed();
+                                const allowed = new Set(filtered.map(m => m.user.id));
+                                setProfilesPaused(false);
+                                queueProfiles(ids.filter(id => allowed.has(id)));
+                                setStats(getQueueStats());
+                            }}
+                        >
+                            {t(`Retry ${stats.failed} unavailable`, `Tentar de novo ${stats.failed} indisponíveis`)}
+                        </button>
+                    )}
                 </div>
 
                 <div className="vc-badgesplus-controls">
@@ -459,6 +518,15 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
                     />
                 </div>
 
+                {hasTextFilter && (
+                    <div className="vc-badgesplus-search-info">
+                        <span>
+                            {plural(filtered.length, "member matches the filter", "members match the filter", "membro bate com o filtro", "membros batem com o filtro")}
+                            {missing.length > 0 && ` · ${t(`${missing.length} still to load`, `${missing.length} ainda pra carregar`)}`}
+                        </span>
+                    </div>
+                )}
+
                 {shownGroups.length > 0
                     ? (
                         <div className="vc-badgesplus-chips">
@@ -493,7 +561,13 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
                         </div>
                         {results.slice(0, s.searchMaxResults).map(m => (
                             <div key={m.user.id} className="vc-badgesplus-row">
-                                <div className="vc-badgesplus-person" onClick={() => openDm(m.user.id)}>
+                                <div
+                                    className="vc-badgesplus-person"
+                                    onClick={() => {
+                                        openDm(m.user.id);
+                                        if (s.searchCloseOnMessage) (modalProps as any).onClose?.();
+                                    }}
+                                >
                                     <img
                                         className="vc-badgesplus-avatar"
                                         src={m.user.getAvatarURL(guildId, 32)}

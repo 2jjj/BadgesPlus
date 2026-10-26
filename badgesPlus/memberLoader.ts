@@ -27,6 +27,11 @@ export interface MemberScanController {
     cancel(): void;
 }
 
+export interface MemberScanOptions {
+    /** Teto de espera por cada faixa nova da lista / max wait per new list range */
+    maxStepWaitMs?: number;
+}
+
 const activeScans = new Set<MemberScanController>();
 
 export function cancelAllMemberScans() {
@@ -65,7 +70,8 @@ function ensureMemberListOpen() {
  */
 export function scanGuildMembers(
     guildId: string,
-    onProgress: (progress: MemberScanProgress) => void
+    onProgress: (progress: MemberScanProgress) => void,
+    options: MemberScanOptions = {}
 ): MemberScanController {
     const controller: MemberScanController = {
         cancelled: false,
@@ -98,6 +104,7 @@ export function scanGuildMembers(
 
     void (async () => {
         const startedAt = Date.now();
+        const maxStepWait = Math.max(150, options.maxStepWaitMs ?? 1200);
         let pos = 0;
         let emptyPasses = 0;
         let lastCount = loaded;
@@ -119,8 +126,19 @@ export function scanGuildMembers(
                 }
 
                 const max = el.scrollHeight - el.clientHeight;
+                const before = el.scrollHeight;
                 el.scrollTop = Math.min(pos, max);
-                await sleep(320);
+
+                // Espera a próxima faixa carregar (a lista cresce) em vez de dormir um tempo fixo.
+                // Isso carrega mais rápido quando a rede responde e evita desperdício quando não.
+                // Waits for the next range to load (the list grows) instead of a fixed sleep. That's
+                // faster when the network responds and avoids waste when it doesn't.
+                const waitStart = Date.now();
+                while (!controller.cancelled && Date.now() - waitStart < maxStepWait) {
+                    await sleep(Math.min(90, maxStepWait));
+                    if (el.scrollHeight > before) break;
+                }
+
                 refresh();
                 emit(false);
 

@@ -251,8 +251,8 @@ export const settings = definePluginSettings({
         },
         ["Member scan speed", "Velocidade de varredura de membros"],
         [
-            "Gap between requests when loading the full member list. These are gateway requests, so they don't use the profile limit.",
-            "Intervalo entre requisições ao carregar a lista completa de membros. São requisições de gateway, então não usam o limite de perfil."
+            "How long to wait for the member list to load each step. It moves on as soon as the list grows. These are Discord's own member-list requests, not profile fetches.",
+            "Quanto esperar a lista de membros carregar a cada passo. Ele segue assim que a lista cresce. São requisições da própria lista de membros do Discord, não buscas de perfil."
         ]
     ),
     searchAutoLoadLimit: tr(
@@ -276,7 +276,10 @@ export const settings = definePluginSettings({
     searchCloseOnMessage: tr(
         { type: OptionType.BOOLEAN, default: true },
         ["Close the search when opening a DM", "Fechar o pesquisador ao abrir DM"],
-        ["Closes the search when you click to send a message.", "Fecha o pesquisador quando você clica para mandar mensagem."]
+        [
+            "Closes the search when you click a person to open the DM. The \"oi\" button keeps it open so you can message several people.",
+            "Fecha o pesquisador quando você clica numa pessoa pra abrir a DM. O botão \"oi\" mantém aberto pra mandar pra várias pessoas."
+        ]
     ),
     searchIncludeBots: tr(
         { type: OptionType.BOOLEAN, default: false },

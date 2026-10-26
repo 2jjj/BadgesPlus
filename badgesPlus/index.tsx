@@ -16,6 +16,7 @@ import type { ReactNode } from "react";
 
 import { ensureCacheLoaded, flush } from "./badgeCache";
 import { t } from "./i18n";
+import { cancelAllMemberScans } from "./memberLoader";
 import { clearQueue, initCooldown, setConcurrency, setMinDelay } from "./profileQueue";
 import { openSearchBadges } from "./SearchModal";
 import { settings } from "./settings";
@@ -97,6 +98,7 @@ export default definePlugin({
     },
 
     stop() {
+        cancelAllMemberScans();
         clearQueue();
         void flush();
         removeMessageDecoration("vc-badgesplus");
