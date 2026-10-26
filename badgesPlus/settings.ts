@@ -287,6 +287,24 @@ export const settings = definePluginSettings({
             "Quanto esperar a lista de membros carregar a cada passo. Ele segue assim que a lista cresce. São requisições da própria lista de membros do Discord, não buscas de perfil."
         ]
     ),
+    deepScanSpeed: tr(
+        {
+            type: OptionType.SELECT,
+            get options() {
+                return [
+                    { label: t("Fast (500ms)", "Rápido (500ms)"), value: 500 },
+                    { label: t("Normal (800ms)", "Normal (800ms)"), value: 800, default: true },
+                    { label: t("Safe (1200ms)", "Seguro (1200ms)"), value: 1200 },
+                    { label: t("Slow (2000ms)", "Devagar (2000ms)"), value: 2000 },
+                ];
+            }
+        },
+        ["Deep scan speed", "Velocidade da varredura profunda"],
+        [
+            "Gap between name searches when loading the whole server past the member-list cap. Slower is safer and avoids Discord holding the responses.",
+            "Intervalo entre buscas de nome ao carregar o servidor inteiro além do limite da lista. Mais devagar é mais seguro e evita o Discord segurar as respostas."
+        ]
+    ),
     searchAutoLoadLimit: tr(
         {
             type: OptionType.SLIDER,
@@ -354,6 +372,7 @@ export const settings = definePluginSettings({
     searchServerMemberSearch: { hidden() { return !this.store.showSearchButton; } },
     searchAutoLoadLimit: { hidden() { return !this.store.showSearchButton; } },
     memberScanSpeed: { hidden() { return !this.store.showSearchButton; } },
+    deepScanSpeed: { hidden() { return !this.store.showSearchButton; } },
     searchShowMessageButton: { hidden() { return !this.store.showSearchButton; } },
     searchCloseOnMessage: { hidden() { return !this.store.showSearchButton || !this.store.searchShowMessageButton; } },
     searchIncludeBots: { hidden() { return !this.store.showSearchButton; } },

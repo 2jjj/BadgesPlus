@@ -63,6 +63,12 @@
     transform: scale(0.97);
 }
 
+.vc-badgesplus-links {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
 .vc-badgesplus-chips {
     display: flex;
     flex-wrap: wrap;

@@ -17,7 +17,7 @@ import { getBoostIcon, getCachedBadges, onCacheChange } from "./badgeCache";
 import { badgeIconUrl, badgeSortRank, boostLevelFromPremiumSince, getBadgeLabel, getCategory, getFlagBadges, getTooltip, isCategoryEnabled, makeBoostBadge, SimpleBadge } from "./badges";
 import { plural, t } from "./i18n";
 import { CachedMember, captureMemberCache, clearMemberCache, ensureMemberCacheLoaded, getCachedMembers, onMemberCacheChange } from "./memberCache";
-import { cancelAllMemberScans, isScanningGuild, MemberScanProgress, scanGuildMembers, searchGuildMembers } from "./memberLoader";
+import { cancelAllMemberScans, deepScanMembers, isScanningGuild, MemberScanProgress, scanGuildMembers, searchGuildMembers } from "./memberLoader";
 import { clearQueue, getQueueStats, isDone, onQueueChange, pendingCount, queueProfiles, retryFailed } from "./profileQueue";
 import { settings } from "./settings";
 
@@ -249,6 +249,7 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
     // total já carregado, sem o filtro de bots / total already loaded, without the bot filter
     const rawLoaded = GuildMemberStore.getMemberIds(guildId).length;
     const [scan, setScan] = useState<MemberScanProgress | null>(null);
+    const [deepScan, setDeepScan] = useState(false);
     const [stats, setStats] = useState(getQueueStats());
     const [profilesPaused, setProfilesPaused] = useState(false);
     const autoScanStarted = useRef(false);
@@ -350,6 +351,7 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
     function startMemberScan() {
         if (isScanningGuild(guildId)) return;
         autoScanStarted.current = true;
+        setDeepScan(false);
         setScan({ loaded: rawLoaded, total: memberCount || 0, done: false, cancelled: false });
         scanGuildMembers(
             guildId,
@@ -361,9 +363,28 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
         );
     }
 
+    function startDeepScan() {
+        if (isScanningGuild(guildId)) return;
+        autoScanStarted.current = true;
+        setDeepScan(true);
+        setScan({ loaded: rawLoaded, total: memberCount || 0, done: false, cancelled: false });
+        deepScanMembers(
+            guildId,
+            progress => {
+                setScan(progress.done ? null : progress);
+                if (progress.done) {
+                    setDeepScan(false);
+                    void captureMemberCache(guildId, true);
+                }
+            },
+            { gapMs: s.deepScanSpeed }
+        );
+    }
+
     function stopMemberScan() {
         cancelAllMemberScans();
         setScan(null);
+        setDeepScan(false);
     }
 
     // Quando o usuário filtra ou escolhe uma badge, garante que a lista inteira seja carregada.
@@ -556,10 +577,15 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
                         {scan
                             ? (
                                 <span>
-                                    {t(
-                                        `Scanning members… ${scan.loaded}${scan.total ? `/${scan.total}` : ""}`,
-                                        `Varrendo membros… ${scan.loaded}${scan.total ? `/${scan.total}` : ""}`
-                                    )}{" · "}
+                                    {deepScan
+                                        ? t(
+                                            `Searching names… ${scan.loaded}${scan.total ? `/${scan.total}` : ""}`,
+                                            `Buscando nomes… ${scan.loaded}${scan.total ? `/${scan.total}` : ""}`
+                                        )
+                                        : t(
+                                            `Scanning members… ${scan.loaded}${scan.total ? `/${scan.total}` : ""}`,
+                                            `Varrendo membros… ${scan.loaded}${scan.total ? `/${scan.total}` : ""}`
+                                        )}{" · "}
                                     <button className="vc-badgesplus-link" onClick={stopMemberScan}>{t("Stop members", "Parar membros")}</button>
                                 </span>
                             )
@@ -568,9 +594,14 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
                                     <span>
                                         {t("Discord only sent part of the member list.", "O Discord mandou só parte da lista de membros.")}
                                     </span>
-                                    <button className="vc-badgesplus-link" onClick={startMemberScan}>
-                                        {t("Load more members", "Carregar mais membros")}
-                                    </button>
+                                    <span className="vc-badgesplus-links">
+                                        <button className="vc-badgesplus-link" onClick={startMemberScan}>
+                                            {t("Load more members", "Carregar mais membros")}
+                                        </button>
+                                        <button className="vc-badgesplus-link" onClick={startDeepScan}>
+                                            {t("Search all names (slow)", "Buscar todos os nomes (lento)")}
+                                        </button>
+                                    </span>
                                 </>
                             )}
                     </div>

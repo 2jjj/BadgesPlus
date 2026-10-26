@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import * as DataStore from "@api/DataStore";
 import { Logger } from "@utils/Logger";
 import { findByPropsLazy } from "@webpack";
 import { FluxDispatcher, GuildMemberCountStore, GuildMemberStore } from "@webpack/common";
@@ -15,7 +16,8 @@ const GuildActions = findByPropsLazy("requestMembers", "requestMembersById") as 
 
 const MEMBERS_SELECTOR = 'div[class*="members_"]';
 const MAX_MS = 20 * 60 * 1000; // teto de tempo por varredura / per-scan time cap
-const ZERO_GROWTH_PASSES = 3; // voltas sem gente nova antes de parar / empty passes before stopping
+const ZERO_GROWTH_PASSES = 2; // voltas sem gente nova antes de parar / empty passes before stopping
+const PLATEAU_MIN_GROWTH = 40; // abaixo disso a lista já saturou / below this the list has plateaued
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
@@ -59,6 +61,26 @@ const SEARCH_GAP_MS = 2500;
 let searchChain: Promise<void> = Promise.resolve();
 let lastSearchAt = 0;
 
+function requestMembersPage(guildId: string, query: string, limit = 100) {
+    try {
+        if (GuildActions?.requestMembers) {
+            GuildActions.requestMembers(guildId, query, limit, false);
+            return;
+        }
+
+        FluxDispatcher.dispatch({
+            type: "GUILD_MEMBERS_REQUEST",
+            guildId,
+            guildIds: [guildId],
+            query,
+            limit,
+            presences: false
+        });
+    } catch (e) {
+        logger.error("Falha na busca de membros / member search failed", e);
+    }
+}
+
 export function searchGuildMembers(guildId: string, query: string, limit = 100): Promise<void> {
     const q = query.trim();
     if (q.length < 2) return Promise.resolve();
@@ -67,27 +89,145 @@ export function searchGuildMembers(guildId: string, query: string, limit = 100):
         const wait = SEARCH_GAP_MS - (Date.now() - lastSearchAt);
         if (wait > 0) await sleep(wait);
         lastSearchAt = Date.now();
-
-        try {
-            if (GuildActions?.requestMembers) {
-                GuildActions.requestMembers(guildId, q, limit, false);
-                return;
-            }
-
-            FluxDispatcher.dispatch({
-                type: "GUILD_MEMBERS_REQUEST",
-                guildId,
-                guildIds: [guildId],
-                query: q,
-                limit,
-                presences: false
-            });
-        } catch (e) {
-            logger.error("Falha na busca de membros / member search failed", e);
-        }
+        requestMembersPage(guildId, q, limit);
     }).catch(() => { });
 
     return searchChain;
+}
+
+// A lista de membros para de carregar por volta de ~2.400 membros (limite do próprio cliente).
+// A varredura profunda usa a busca do gateway (op 8) por prefixo: uma consulta por vez, com pausa,
+// cobrindo 1 e 2 caracteres. É lenta, mas é o que passa do teto da lista.
+// The member list stops around ~2,400 members (the client's own cap). The deep scan uses the
+// gateway search (op 8) by prefix: one query at a time with a gap, covering 1 and 2 characters.
+// It's slow, but it's what gets past the list cap.
+const DEEP_CHARS = [..."abcdefghijklmnopqrstuvwxyz0123456789._"];
+const DEEP_GAP_MS = 800;
+const DEEP_MAX_MS = 40 * 60 * 1000;
+const DEEP_KEY = "BadgesPlus:deepScan:v1:";
+const DEEP_SAVE_EVERY = 20;
+
+export interface DeepScanOptions {
+    /** Intervalo entre consultas de prefixo / gap between prefix queries */
+    gapMs?: number;
+}
+
+interface DeepScanState {
+    nextIndex: number;
+}
+
+function deepKey(guildId: string) {
+    return `${DEEP_KEY}${guildId}`;
+}
+
+async function loadDeepIndex(guildId: string, length: number) {
+    try {
+        const state = await DataStore.get<DeepScanState>(deepKey(guildId));
+        if (state && Number.isInteger(state.nextIndex) && state.nextIndex > 0 && state.nextIndex < length) {
+            return state.nextIndex;
+        }
+    } catch { /* começa do zero / start over */ }
+    return 0;
+}
+
+function saveDeepIndex(guildId: string, nextIndex: number, length: number) {
+    const key = deepKey(guildId);
+    if (nextIndex >= length) {
+        void DataStore.del(key).catch(() => { });
+        return;
+    }
+    void DataStore.set(key, { nextIndex } satisfies DeepScanState).catch(() => { });
+}
+
+let deepPrefixesCache: string[] | undefined;
+function deepPrefixes() {
+    if (deepPrefixesCache) return deepPrefixesCache;
+
+    const prefixes = [...DEEP_CHARS];
+    for (const first of DEEP_CHARS) {
+        for (const second of DEEP_CHARS) {
+            prefixes.push(first + second);
+        }
+    }
+
+    deepPrefixesCache = prefixes;
+    return prefixes;
+}
+
+/**
+ * Enumera os membros pelo gateway por prefixo. Uma consulta retorna até 100 membros; como a
+ * distribuição de nomes é espalhada, 1 e 2 letras cobrem a maior parte do servidor.
+ * Enumerates members through the gateway by prefix. One query returns up to 100 members; names
+ * are spread out, so 1 and 2 characters cover most of the server.
+ */
+export function deepScanMembers(
+    guildId: string,
+    onProgress: (progress: MemberScanProgress) => void,
+    options: DeepScanOptions = {}
+): MemberScanController {
+    const existing = activeGuildScans.get(guildId);
+    if (existing) return existing;
+
+    const controller: MemberScanController = {
+        cancelled: false,
+        cancel() { controller.cancelled = true; }
+    };
+    activeScans.add(controller);
+    activeGuildScans.set(guildId, controller);
+
+    const total = (() => {
+        try { return GuildMemberCountStore?.getMemberCount(guildId) ?? 0; } catch { return 0; }
+    })();
+
+    let loaded = loadedMemberCount(guildId);
+    let lastEmit = 0;
+
+    const emit = (done: boolean) => {
+        const now = Date.now();
+        if (!done && now - lastEmit < 200) return;
+        lastEmit = now;
+        onProgress({ loaded, total, done, cancelled: controller.cancelled });
+    };
+
+    const refresh = () => {
+        const next = loadedMemberCount(guildId);
+        if (next > loaded) loaded = next;
+    };
+
+    void (async () => {
+        const gap = Math.max(300, options.gapMs ?? DEEP_GAP_MS);
+        const startedAt = Date.now();
+
+        try {
+            const prefixes = deepPrefixes();
+            let index = await loadDeepIndex(guildId, prefixes.length);
+
+            for (; index < prefixes.length; index++) {
+                if (controller.cancelled || Date.now() - startedAt > DEEP_MAX_MS) break;
+                if (total && loaded >= total) break;
+
+                requestMembersPage(guildId, prefixes[index], 100);
+                await sleep(gap);
+                refresh();
+                emit(false);
+
+                if ((index + 1) % DEEP_SAVE_EVERY === 0) {
+                    saveDeepIndex(guildId, index + 1, prefixes.length);
+                }
+            }
+
+            const completed = index >= prefixes.length || (total > 0 && loaded >= total);
+            saveDeepIndex(guildId, completed ? prefixes.length : index, prefixes.length);
+
+            logger.info(`Varredura profunda: ${loaded}/${total} (${completed ? "completa" : `parou em ${index}`})`);
+            emit(true);
+        } finally {
+            activeScans.delete(controller);
+            if (activeGuildScans.get(guildId) === controller) activeGuildScans.delete(guildId);
+        }
+    })();
+
+    return controller;
 }
 
 // A lista de membros do Discord carrega em FAIXAS conforme você rola (é o mesmo mecanismo do
@@ -201,7 +341,7 @@ export function scanGuildMembers(
                     pos = 0;
                     const grew = loaded - lastCount;
                     lastCount = loaded;
-                    if (grew < 3) {
+                    if (grew < PLATEAU_MIN_GROWTH) {
                         if (++emptyPasses >= ZERO_GROWTH_PASSES) break;
                     } else {
                         emptyPasses = 0;
