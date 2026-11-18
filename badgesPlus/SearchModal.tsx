@@ -92,17 +92,17 @@ async function sendHi(userId: string) {
             // Não deu pra criar a DM: abre a conversa pra pessoa digitar.
             // Couldn't create the DM: open the chat so the person can type.
             openDm(userId);
-            showToast("Abri a conversa — digite e envie");
+            showToast({ text: "Abri a conversa — digite e envie" });
             return;
         }
 
         await sendMessage(channelId, { content: message });
         openDm(userId);
-        showToast(t(`Message sent: "${message}"`, `Mensagem enviada: "${message}"`), "success");
+        showToast({ text: t(`Message sent: "${message}"`, `Mensagem enviada: "${message}"`), variant: "success" });
     } catch (e) {
         console.error("[BadgesPlus] falha ao mandar mensagem / failed to send quick message", e);
         openDm(userId);
-        showToast(t("Couldn't send the message — see the console", "Falha ao mandar mensagem — veja o console"), "failure");
+        showToast({ text: t("Couldn't send the message — see the console", "Falha ao mandar mensagem — veja o console"), variant: "critical" });
     }
 }
 
@@ -115,14 +115,14 @@ function addFriend(user: User) {
 
         if (res && typeof (res as any).then === "function") {
             (res as any)
-                .then(() => showToast("Pedido de amizade enviado!", "success"))
-                .catch(() => showToast("Não deu pra enviar o pedido — tente pelo perfil", "failure"));
+                .then(() => showToast({ text: "Pedido de amizade enviado!", variant: "success" }))
+                .catch(() => showToast({ text: "Não deu pra enviar o pedido — tente pelo perfil", variant: "critical" }));
         } else {
-            showToast("Pedido de amizade enviado!", "success");
+            showToast({ text: "Pedido de amizade enviado!", variant: "success" });
         }
     } catch (e) {
         console.error("[BadgesPlus] falha ao adicionar amigo / failed to add friend", e);
-        showToast("Não deu pra adicionar — tente pelo perfil", "failure");
+        showToast({ text: "Não deu pra adicionar — tente pelo perfil", variant: "critical" });
     }
 }
 
