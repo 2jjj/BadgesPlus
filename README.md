@@ -57,6 +57,7 @@ Both scripts accept options, e.g. `install.bat -Lang en`:
 | `-VencordDir "C:\path"` | Uses another folder for the Vencord source (default: `Documents\Vencord`) |
 | `-Yes` | Answers "yes" to every question |
 | `-SkipVesktop` | Only builds, doesn't touch Vesktop (install only) |
+| `-Canary` | Injects into the official **Discord Canary** instead of Vesktop (closes it first, injects Vencord, reopens) |
 
 ---
 
@@ -97,7 +98,8 @@ In **Settings → Vencord → Plugins → BadgesPlus** (gear icon). Everything a
 | **Where to show** | In chat · In the member list · On your own account · On bots |
 | **Appearance** | Size in chat · Size in member list · Space between badges · Max badges per person · Show "+N" when over the limit · Order (same as Discord / Nitro first / Nitro last) · Hover text (short name or Discord's text) |
 | **Which badges** | Nitro · Boost · HypeSquad · Discord programs (Staff, Partner, Bug Hunter, Early Supporter, Developers...) · Originally known as · Quests and Orbs · Other |
-| **Loading** | Load profiles automatically · Speed (Fast 0.5s / Normal 1s / Safe 2s / Very safe 4s) · Load bot profiles |
+| **Personalize** | Badge filter (show everything / only the list / everything but the list) · Badge list (ids, exact or prefix with `*`, e.g. `premium_*`) — applies to chat, member list and search · Quick message (the message the chat-bubble button sends) |
+| **Loading** | Load profiles automatically · Speed (Fast 0.5s / Normal 1s / Safe 2s / Very safe 4s) · Load bot profiles · **Load everyone in the background** (slow, account-safe; servers and DMs/friends; discovers the whole server with a deep scan; continues across restarts) |
 | **Search** | Show the button · Combine badges (all / any) · Load badges when opening · Message button · Close the search when opening a DM · Include bots · Max results |
 
 Some options only show up when their "parent" option is on. For example, the chat size only appears if "Show in chat" is on.
@@ -123,7 +125,13 @@ pnpm install --frozen-lockfile
 4. Close Vesktop **completely** (tray icon near the clock → Quit) and open it again.
 5. Enable **BadgesPlus** in **Settings → Vencord → Plugins**.
 
-On the official Discord app (no Vesktop), run `pnpm inject` instead of step 3.
+On the official Discord app (no Vesktop), run `pnpm inject` instead of step 3. For **Discord Canary**:
+
+1. Close Discord Canary completely.
+2. `pnpm inject -- -install -location "%LOCALAPPDATA%\DiscordCanary"` (from the `Vencord` folder).
+3. Open Discord Canary.
+
+> Discord Canary re-downloads itself when it updates — the injection (and the plugin) disappears until you run the command again. This is how Vencord works on Canary, not a bug. If Canary applies an update and BadgesPlus vanishes, run the same two commands again (clone/build/copy are already done).
 
 ---
 

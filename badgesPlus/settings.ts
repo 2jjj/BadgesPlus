@@ -8,7 +8,7 @@ import { definePluginSettings } from "@api/Settings";
 import { OptionType } from "@utils/types";
 
 import { t } from "./i18n";
-import { setConcurrency, setMinDelay } from "./profileQueue";
+import { setBulkDelay, setConcurrency, setMinDelay } from "./profileQueue";
 
 /**
  * Adiciona nome e descrição traduzidos. São getters para que a tela de configurações
@@ -159,6 +159,50 @@ export const settings = definePluginSettings({
         ["Any badge that doesn't fit the categories above (including new Discord badges).", "Qualquer badge que não se encaixe nas categorias acima (inclusive badges novas do Discord)."]
     ),
 
+    // ---- Personalize / Personalizar -------------------------------------------
+    badgeFilterMode: tr(
+        {
+            type: OptionType.SELECT,
+            get options() {
+                return [
+                    { label: t("Show everything", "Mostrar tudo"), value: "all", default: true },
+                    { label: t("Only the badges in the list", "Só as badges da lista"), value: "only" },
+                    { label: t("Everything except the list", "Tudo, exceto as da lista"), value: "hide" },
+                ];
+            }
+        },
+        ["Badge filter", "Filtro de badges"],
+        [
+            "Show all badges, only the ones in the list below, or everything except the ones in the list. Applies everywhere: chat, member list and search. (Use \"Only\" together with the list below to personalize exactly which badges show up.)",
+            "Mostra todas as badges, só as da lista abaixo, ou tudo menos as da lista. Vale em tudo: chat, lista de membros e pesquisador. (Combine \"Só as da lista\" com a lista abaixo pra personalizar exatamente quais badges aparecem.)"
+        ]
+    ),
+    badgeFilterIds: tr(
+        {
+            type: OptionType.STRING,
+            default: "",
+            multiline: true,
+            placeholder: "premium\npremium_tenure_12_month\nhypesquad_house_1\nguild_booster_lvl9\nquest*"
+        },
+        ["Badge list", "Lista de badges"],
+        [
+            "Badge ids, one per line (or separated by comma/space). Exact id, or a prefix ending in * (e.g. premium_* matches every Nitro tier). Use with the filter above.",
+            "Ids de badge, um por linha (ou separados por vírgula/espaço). id exato, ou prefixo com * (ex.: premium_* casa com todos os níveis de Nitro). Use com o filtro acima."
+        ]
+    ),
+    quickMessage: tr(
+        {
+            type: OptionType.STRING,
+            default: "oi",
+            placeholder: "oi"
+        },
+        ["Quick message", "Mensagem rápida"],
+        [
+            "Message the chat-bubble button sends in the search when you want to message somebody. It is sent as-is.",
+            "Mensagem que o botão de balãozinho manda no pesquisador quando você quer mandar mensagem pra alguém. É enviada exatamente como está."
+        ]
+    ),
+
     // ---- Loading / Carregamento -----------------------------------------------
     fetchProfiles: tr(
         { type: OptionType.BOOLEAN, default: true },
@@ -204,14 +248,62 @@ export const settings = definePluginSettings({
     fetchBotProfiles: tr(
         { type: OptionType.BOOLEAN, default: false },
         ["Load bot profiles", "Carregar perfil de bots"],
-        ["Also fetches bot profiles. Leave off to save requests.", "TambǸm busca o perfil de bots. Deixe desligado para economizar requisi����es."]
+        ["Also fetches bot profiles. Leave off to save requests.", "Também busca o perfil de bots. Deixe desligado para economizar requisições."]
+    ),
+    backgroundLoadAll: tr(
+        { type: OptionType.BOOLEAN, default: true },
+        ["Load everyone in the background", "Carregar tudo em segundo plano"],
+        [
+            "Slowly downloads the profile of everyone the client knows (loaded server member lists and DMs/friends), so badges show everywhere without opening profiles. A few profiles per minute, backs off on Discord's rate limit, resumes later, and continues across restarts — the cache is the progress bar.",
+            "Vai baixando devagar o perfil de todo mundo que o cliente conhece (listas de membros carregadas e DMs/amigos), pra as badges aparecerem em todo lugar sem abrir perfil. Uns poucos perfis por minuto, recua com o limite do Discord e continua depois, inclusive depois de reiniciar — o cache é a própria barra de progresso."
+        ]
+    ),
+    backgroundLoadTarget: tr(
+        {
+            type: OptionType.SELECT,
+            get options() {
+                return [
+                    { label: t("Servers and DMs/friends", "Servidores e DMs/amigos"), value: "serversAndDms", default: true },
+                    { label: t("Only servers", "Só servidores"), value: "servers" },
+                    { label: t("Only DMs and friends", "Só DMs e amigos"), value: "dms" },
+                ];
+            }
+        },
+        ["Background loading: who", "Carga de fundo: quem"],
+        ["Which people the background loader covers.", "Quem a carga de fundo cobre."]
+    ),
+    backgroundLoadAllSpeed: tr(
+        {
+            type: OptionType.SELECT,
+            get options() {
+                return [
+                    { label: t("Very slow (1 per 4s)", "Muito lento (1 a cada 4s)"), value: 4000 },
+                    { label: t("Slow (1 per 2.5s) — recommended", "Lento (1 a cada 2,5s) — recomendado"), value: 2500, default: true },
+                    { label: t("Faster (1 per 1.5s)", "Mais rápido (1 a cada 1,5s)"), value: 1500 },
+                ];
+            },
+            onChange: (ms: number) => setBulkDelay(ms)
+        },
+        ["Background loading speed", "Velocidade da carga de fundo"],
+        [
+            "Delay between one profile and the next in the background loader. If Discord rate-limits, it backs off and resumes later — slower is always safer for the account.",
+            "Intervalo entre um perfil e o próximo na carga de fundo. Se o Discord limitar, ele recua e volta depois — mais lento é sempre mais seguro pra conta."
+        ]
+    ),
+    backgroundDeepScanAll: tr(
+        { type: OptionType.BOOLEAN, default: true },
+        ["Discover the whole server (deep scan)", "Descobrir o servidor inteiro (varredura profunda)"],
+        [
+            "Beyond the profiles the client knows, it also slowly sweeps the server through the gateway (name-prefix search, resuming where it stopped) so even members who never loaded get badges. Runs one server at a time, re-checks every 14 days.",
+            "Além dos perfis que o cliente conhece, ele também varre o servidor devagar pelo gateway (busca por prefixo de nome, retomando onde parou) pra até quem nunca carregou ganhe badges. Um servidor por vez, revisita a cada 14 dias."
+        ]
     ),
     cacheMembers: tr(
         { type: OptionType.BOOLEAN, default: true },
         ["Keep the member list on disk", "Guardar a lista de membros no disco"],
         [
             "Saves who is in each server so the search already covers everyone when you reopen Discord. You can clear it in the search window.",
-            "Salva quem est�� em cada servidor pra pesquisa j�� cobrir todo mundo quando vocǦ reabrir o Discord. Dǭ pra limpar na janela de pesquisa."
+            "Salva quem está em cada servidor pra pesquisa já cobrir todo mundo quando você reabrir o Discord. Dá pra limpar na janela de pesquisa."
         ]
     ),
 
@@ -242,7 +334,7 @@ export const settings = definePluginSettings({
         ["Load badges when opening the search", "Carregar badges ao abrir o pesquisador"],
         [
             "Off by default: automatically loading thousands of profiles can get your account globally rate-limited (then nothing loads, not even in DMs). Turn it on if you want it, or just use the Load button.",
-            "Desligado por padrǜo: carregar milhares de perfis sozinho pode colocar sua conta em limite global (a�� nǜo carrega nada, nem em DM). Ligue se quiser, ou use o botǜo Carregar."
+            "Desligado por padrão: carregar milhares de perfis sozinho pode colocar sua conta em limite global (aí não carrega nada, nem em DM). Ligue se quiser, ou use o botão Carregar."
         ]
     ),
     searchAutoLoadOnBadge: tr(
@@ -250,7 +342,7 @@ export const settings = definePluginSettings({
         ["Load everyone when picking a badge", "Carregar todo mundo ao escolher uma badge"],
         [
             "When you select a badge, it starts loading the profiles of everyone in the current scope (the whole server if there's no name filter). Results fill in as profiles arrive.",
-            "Quando vocǦ escolhe uma badge, ele come��a a carregar os perfis de todo mundo no escopo atual (o servidor inteiro se nǜo tiver filtro de nome). Os resultados vǜo aparecendo conforme os perfis chegam."
+            "Quando você escolhe uma badge, ele começa a carregar os perfis de todo mundo no escopo atual (o servidor inteiro se não tiver filtro de nome). Os resultados vão aparecendo conforme os perfis chegam."
         ]
     ),
     searchAutoScanMembers: tr(
@@ -258,7 +350,7 @@ export const settings = definePluginSettings({
         ["Scan the whole server when filtering", "Varrer o servidor inteiro ao filtrar"],
         [
             "When you type a name or pick a length, it also loads the rest of the member list in the background so the filter covers everyone. You can stop it anytime.",
-            "Quando vocǦ digita um nome ou escolhe um tamanho, ele tambǸm carrega o resto da lista de membros em segundo plano pra o filtro cobrir todo mundo. Dǭ pra parar quando quiser."
+            "Quando você digita um nome ou escolhe um tamanho, ele também carrega o resto da lista de membros em segundo plano pra o filtro cobrir todo mundo. Dá pra parar quando quiser."
         ]
     ),
     searchServerMemberSearch: tr(
@@ -266,7 +358,7 @@ export const settings = definePluginSettings({
         ["Search names on Discord's side", "Buscar nomes no lado do Discord"],
         [
             "When you type 2+ letters, asks Discord to search the whole server. Finds people who haven't been loaded yet, with at most one request every 2.5s.",
-            "Quando vocǦ digita 2+ letras, pede pro Discord buscar no servidor inteiro. Acha quem ainda nǜo foi carregado, com no mǭximo uma requisi����o a cada 2,5s."
+            "Quando você digita 2+ letras, pede pro Discord buscar no servidor inteiro. Acha quem ainda não foi carregado, com no máximo uma requisição a cada 2,5s."
         ]
     ),
     memberScanSpeed: tr(
@@ -371,6 +463,14 @@ export const settings = definePluginSettings({
     searchAutoScanMembers: { hidden() { return !this.store.showSearchButton; } },
     searchServerMemberSearch: { hidden() { return !this.store.showSearchButton; } },
     searchAutoLoadLimit: { hidden() { return !this.store.showSearchButton; } },
+    // ---- Personalize / Personalizar -------------------------------------------
+    badgeFilterIds: { hidden() { return this.store.badgeFilterMode === "all"; } },
+
+    // ---- Loading / Carregamento -----------------------------------------------
+    backgroundLoadTarget: { hidden() { return !this.store.backgroundLoadAll; } },
+    backgroundLoadAllSpeed: { hidden() { return !this.store.backgroundLoadAll; } },
+    backgroundDeepScanAll: { hidden() { return !this.store.backgroundLoadAll; } },
+
     memberScanSpeed: { hidden() { return !this.store.showSearchButton; } },
     deepScanSpeed: { hidden() { return !this.store.showSearchButton; } },
     searchShowMessageButton: { hidden() { return !this.store.showSearchButton; } },

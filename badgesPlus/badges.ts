@@ -17,9 +17,51 @@ export interface SimpleBadge {
 
 export const badgeIconUrl = (icon: string) => `https://cdn.discordapp.com/badge-icons/${icon}.png`;
 
+// Ícones oficiais de impulso por nível. Antes o ícone só era conhecido depois de carregar o perfil
+// de algum booster; com este mapa a badge de impulso aparece na hora pra todo mundo que tem
+// `premiumSince`, mesmo sem nenhum perfil carregado. / Official boost icons per level. Before, the
+// icon was only known after loading some booster's profile; with this map the boost badge shows up
+// right away for everyone with a `premiumSince`, even with no profile loaded at all.
+export const BOOST_ICONS: Record<number, string> = {
+    1: "51040c70d4f20a921ad6674ff86fc95c",
+    2: "0e4080d1d333bc7ad29ef6528b6f2fb7",
+    3: "72bed924410c304dbe3d00a6e593ff59",
+    4: "df199d2050d3ed4ebf84d64ae83989f8",
+    5: "996b3e870e8a22ce519b3a50e6bdd52f",
+    6: "991c9f39ee33d7537d9f408c3e53141e",
+    7: "cb3ae83c15e970e8f3d410bc62cb8b99",
+    8: "7142225d31238f6387d9f09efaa02759",
+    9: "ec92202290b48d0879b7413d2dde3bab",
+};
+
+/**
+ * Junta badges de várias fontes sem duplicar id nenhum. A ordem de preferência é a ordem dos
+ * argumentos. É o que garante que um perfil incompleto (ou uma lista vazia) nunca esconda as
+ * badges que já estavam no cache ou nas flags públicas.
+ * Merges badges from several sources, deduping by id. Argument order is preference order. This
+ * guarantees an incomplete profile (or an empty list) never hides badges already known from the
+ * cache or the public flags.
+ */
+export function mergeBadges(...sources: Array<readonly SimpleBadge[] | undefined | null>): SimpleBadge[] {
+    const seen = new Set<string>();
+    const merged: SimpleBadge[] = [];
+
+    for (const source of sources) {
+        if (!source) continue;
+        for (const badge of source) {
+            if (!badge?.id || seen.has(badge.id)) continue;
+            seen.add(badge.id);
+            merged.push(badge);
+        }
+    }
+
+    return merged;
+}
+
 // Badges que dá pra descobrir só pelas flags públicas, sem buscar o perfil.
 // Badges that can be read from public flags alone, without fetching the profile.
-// Nitro/boost only show up once the full profile is loaded.
+// Nitro só aparece quando o perfil completo carrega (impulso é derivado do membro).
+// Nitro only shows up once the full profile is loaded (boost is derived from the member).
 const FLAG_BADGES: Array<SimpleBadge & { flag: number; }> = [
     { flag: 1 << 0, id: "staff", description: "Discord Staff", icon: "5e74e9b61934fc1f67c65515d1f7e60d" },
     { flag: 1 << 1, id: "partner", description: "Partnered Server Owner", icon: "3f9748e53446a137a052f3454e2de41e" },
@@ -128,6 +170,33 @@ export function getBadgeLabel(badge: SimpleBadge): string {
 export const getTooltip = (badge: SimpleBadge) =>
     settings.store.tooltipText === "discord" ? badge.description : getBadgeLabel(badge);
 
+// ---- Custom filter / Filtro personalizado --------------------------------------
+
+const filterWhitespace = /[\s,;]+/;
+
+/** Lê a lista de badges do campo personalizado e descarta lixo / parses the custom badge list and drops
+ * anything empty. Tokens ending with `*` match by prefix. */
+export function parseBadgeFilterList(raw: string | undefined | null): Set<string> {
+    const out = new Set<string>();
+    for (const token of (raw ?? "").toLowerCase().split(filterWhitespace)) {
+        const trimmed = token.trim();
+        if (trimmed) out.add(trimmed);
+    }
+    return out;
+}
+
+export function badgeFilterMatches(id: string, tokens: Set<string>) {
+    const lower = id.toLowerCase();
+    for (const token of tokens) {
+        if (token.endsWith("*")) {
+            if (lower.startsWith(token.slice(0, -1))) return true;
+        } else if (token === lower) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // ---- Categorias / Categories ------------------------------------------------
 
 type Category = "nitro" | "boost" | "hypesquad" | "hypesquadEvents" | "programs" | "legacy" | "quests" | "other";
@@ -169,9 +238,26 @@ export const isCategoryEnabled = (badge: SimpleBadge) =>
 
 const isNitroOrBoost = (b: SimpleBadge) => ["nitro", "boost"].includes(getCategory(b));
 
+/** Filtro personalizado por id de badge / custom badge id filter */
+export function customBadgeFilter(badge: SimpleBadge): boolean {
+    if (settings.store.badgeFilterMode === "all") return true;
+
+    const tokens = parseBadgeFilterList(settings.store.badgeFilterIds);
+    if (!tokens.size) return true;
+
+    const match = badgeFilterMatches(badge.id, tokens);
+    return settings.store.badgeFilterMode === "only" ? match : !match;
+}
+
 /** Aplica filtros e ordem das configurações / Applies the filters and order from settings */
 export function filterAndSortBadges(badges: SimpleBadge[]): SimpleBadge[] {
-    const visible = badges.filter(isCategoryEnabled);
+    const mode = settings.store.badgeFilterMode;
+
+    // No modo "Só as badges da lista" a lista vence as categorias: o usuário quis DISSO aqui.
+    // In "only listed" mode the custom list wins over the categories: the user asked for exactly these.
+    const visible = mode === "only"
+        ? badges.filter(customBadgeFilter)
+        : badges.filter(isCategoryEnabled).filter(customBadgeFilter);
 
     switch (settings.store.badgeOrder) {
         case "nitroFirst":

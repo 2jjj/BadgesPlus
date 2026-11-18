@@ -7,7 +7,7 @@
 import * as DataStore from "@api/DataStore";
 import { Logger } from "@utils/Logger";
 
-import type { SimpleBadge } from "./badges";
+import { BOOST_ICONS, type SimpleBadge } from "./badges";
 
 const logger = new Logger("BadgesPlus");
 const PREFIX = "BadgesPlus:badges:v1:";
@@ -30,7 +30,11 @@ const listeners = new Set<() => void>();
 const boostIcons = new Map<number, string>();
 
 export function getBoostIcon(level: number): string | undefined {
-    return boostIcons.get(level);
+    // ícone aprendido de um perfil real vem primeiro (cobre níveis novos); o mapa fixo garante
+    // que a badge apareça mesmo sem nenhum perfil de booster carregado.
+    // learned icon from a real profile wins (covers new levels); the fixed map guarantees the badge
+    // shows up even with no booster profile loaded.
+    return boostIcons.get(level) ?? BOOST_ICONS[level];
 }
 
 function indexBoostIcons(badges: SimpleBadge[]) {
@@ -89,10 +93,24 @@ export function hasCachedBadges(id: string) {
     return cache.has(id);
 }
 
+function sameBadges(a: SimpleBadge[], b: SimpleBadge[]) {
+    return a.length === b.length && a.every((badge, i) =>
+        badge.id === b[i].id
+        && badge.icon === b[i].icon
+        && badge.description === b[i].description
+    );
+}
+
 export function setCachedBadges(id: string, badges: SimpleBadge[]) {
-    cache.set(id, badges);
-    indexBoostIcons(badges);
-    pending.set(id, badges);
+    const existing = cache.get(id);
+    // resposta vazia não apaga o que já sabemos / an empty response never wipes what we already know
+    const next = badges.length || !existing ? badges : existing;
+
+    if (existing && sameBadges(existing, next)) return;
+
+    cache.set(id, next);
+    indexBoostIcons(next);
+    pending.set(id, next);
     if (flushTimer == null) flushTimer = setTimeout(() => void flush(), FLUSH_MS);
 }
 

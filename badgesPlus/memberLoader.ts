@@ -106,6 +106,8 @@ const DEEP_GAP_MS = 800;
 const DEEP_MAX_MS = 40 * 60 * 1000;
 const DEEP_KEY = "BadgesPlus:deepScan:v1:";
 const DEEP_SAVE_EVERY = 20;
+const DEEP_DONE_KEY = "BadgesPlus:deepScanDone:v1:";
+const DEEP_DONE_MAX_MS = 14 * 24 * 60 * 60 * 1000;
 
 export interface DeepScanOptions {
     /** Intervalo entre consultas de prefixo / gap between prefix queries */
@@ -137,6 +139,19 @@ function saveDeepIndex(guildId: string, nextIndex: number, length: number) {
         return;
     }
     void DataStore.set(key, { nextIndex } satisfies DeepScanState).catch(() => { });
+}
+
+export async function isDeepScanFresh(guildId: string) {
+    try {
+        const finishedAt = await DataStore.get<number>(`${DEEP_DONE_KEY}${guildId}`);
+        return typeof finishedAt === "number" && Date.now() - finishedAt < DEEP_DONE_MAX_MS;
+    } catch {
+        return false;
+    }
+}
+
+function markDeepScanDone(guildId: string) {
+    void DataStore.set(`${DEEP_DONE_KEY}${guildId}`, Date.now()).catch(() => { });
 }
 
 let deepPrefixesCache: string[] | undefined;
@@ -218,6 +233,7 @@ export function deepScanMembers(
 
             const completed = index >= prefixes.length || (total > 0 && loaded >= total);
             saveDeepIndex(guildId, completed ? prefixes.length : index, prefixes.length);
+            if (completed) markDeepScanDone(guildId);
 
             logger.info(`Varredura profunda: ${loaded}/${total} (${completed ? "completa" : `parou em ${index}`})`);
             emit(true);

@@ -56,7 +56,8 @@ Os dois scripts aceitam opções, por exemplo `install.bat -Lang pt`:
 | `-Lang en` / `-Lang pt` | Força o idioma (padrão: idioma do Windows) |
 | `-VencordDir "C:\caminho"` | Usa outra pasta para o código do Vencord (padrão: `Documentos\Vencord`) |
 | `-Yes` | Responde "sim" para todas as perguntas |
-| `-SkipVesktop` | Só compila, não mexe no Vesktop (apenas no instalador) |
+| `-SkipVesktop` | Só compila, não mexe no Vesktop (apenas na compilação) |
+| `-Canary` | Injeta no **Discord Canary** oficial em vez do Vesktop (fecha o Canary, injeta o Vencord e abre de novo) |
 
 ---
 
@@ -97,7 +98,8 @@ Em **Configurações → Vencord → Plugins → BadgesPlus** (ícone de engrena
 | **Onde mostrar** | No chat · Na lista de membros · Nas suas próprias badges · Em bots |
 | **Aparência** | Tamanho no chat · Tamanho na lista de membros · Espaço entre badges · Máximo de badges por pessoa · Mostrar "+N" quando passar do máximo · Ordem (igual ao Discord / Nitro primeiro / Nitro por último) · Texto ao passar o mouse (nome curto ou texto do Discord) |
 | **Quais badges** | Nitro · Impulso · HypeSquad · Programas do Discord (Funcionário, Parceiro, Caçador de Bugs, Apoiador Inicial, Desenvolvedores...) · Nome antigo · Missões e Orbs · Outras |
-| **Carregamento** | Carregar perfis automaticamente · Velocidade (Rápido 0,5s / Normal 1s / Seguro 2s / Muito seguro 4s) · Carregar perfil de bots |
+| **Personalizar** | Filtro de badges (mostrar tudo / só as da lista / tudo menos as da lista) · Lista de badges (ids, exato ou prefixo com `*`, ex.: `premium_*`) — vale no chat, na lista de membros e no pesquisador · Mensagem rápida (a mensagem que o botão de balãozinho manda) |
+| **Carregamento** | Carregar perfis automaticamente · Velocidade (Rápido 0,5s / Normal 1s / Seguro 2s / Muito seguro 4s) · Carregar perfil de bots · **Carregar tudo em segundo plano** (lento e seguro pra conta; servidores e DMs/amigos; descobre o servidor inteiro com varredura profunda; continua entre sessões) |
 | **Pesquisador** | Mostrar o botão · Combinar badges (todas / qualquer uma) · Carregar badges ao abrir · Botão de mensagem · Fechar o pesquisador ao abrir DM · Incluir bots · Máximo de resultados |
 
 Algumas opções só aparecem quando a opção "mãe" está ligada. Por exemplo, o tamanho no chat só aparece se "Mostrar no chat" estiver ligado.
@@ -123,7 +125,13 @@ pnpm install --frozen-lockfile
 4. Feche o Vesktop **por completo** (ícone perto do relógio → Sair) e abra de novo.
 5. Ative o **BadgesPlus** em **Configurações → Vencord → Plugins**.
 
-No Discord oficial (sem Vesktop), em vez do passo 3 rode `pnpm inject`.
+No Discord oficial (sem Vesktop), em vez do passo 3 rode `pnpm inject`. No **Discord Canary**:
+
+1. Feche o Discord Canary por completo.
+2. `pnpm inject -- -install -location "%LOCALAPPDATA%\DiscordCanary"` (dentro da pasta `Vencord`).
+3. Abra o Discord Canary.
+
+> O Discord Canary se reinstala sozinho quando atualiza — a injeção (e o plugin) somem até você rodar o comando de novo. É assim que o Vencord funciona no Canary, não é bug. Se o Canary atualizar e o BadgesPlus sumir, repita os dois comandos (o clone e o build já estão prontos).
 
 ---
 

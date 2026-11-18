@@ -7,8 +7,8 @@
 import { User } from "@vencord/discord-types";
 import { GuildMemberStore, Tooltip, useEffect, useReducer, UserProfileStore, UserStore, useStateFromStores } from "@webpack/common";
 
-import { getBoostIcon, getCachedBadges, onCacheChange } from "./badgeCache";
-import { badgeIconUrl, boostLevelFromPremiumSince, filterAndSortBadges, getBadgeLabel, getFlagBadges, getTooltip, makeBoostBadge, SimpleBadge } from "./badges";
+import { getBoostIcon, getCachedBadges, isCacheLoaded, onCacheChange } from "./badgeCache";
+import { badgeIconUrl, boostLevelFromPremiumSince, filterAndSortBadges, getBadgeLabel, getFlagBadges, getTooltip, makeBoostBadge, mergeBadges, SimpleBadge } from "./badges";
 import { queueProfiles } from "./profileQueue";
 import { settings } from "./settings";
 
@@ -18,7 +18,14 @@ export function UserBadges({ user, where, guildId }: { user: User; where: "chat"
 
     // re-renderiza quando o cache em disco carrega / re-renders when the disk cache loads
     const [, forceUpdate] = useReducer(x => x + 1, 0);
-    useEffect(() => onCacheChange(forceUpdate), []);
+    const cachedBadges = getCachedBadges(user.id);
+    useEffect(() => {
+        const unsubscribe = onCacheChange(forceUpdate);
+        // fecha a corrida: o cache pode terminar de carregar entre o render e este efeito.
+        // closes the race: the cache may finish loading between render and this effect.
+        if (cachedBadges == null && isCacheLoaded()) forceUpdate();
+        return unsubscribe;
+    }, []);
 
     const enabled = where === "chat" ? s.showInChat : s.showInMemberList;
     const allowed = enabled
@@ -28,21 +35,35 @@ export function UserBadges({ user, where, guildId }: { user: User; where: "chat"
     const profileBadges = useStateFromStores(
         [UserProfileStore],
         () => UserProfileStore.getUserProfile(user.id)?.badges as SimpleBadge[] | undefined
-    ) ?? getCachedBadges(user.id);
+    );
+
+    const needsProfile = allowed && profileBadges == null && cachedBadges == null;
 
     useEffect(() => {
-        if (!allowed || profileBadges || !s.fetchProfiles) return;
+        if (!needsProfile || !s.fetchProfiles) return;
         if (user.bot && !s.fetchBotProfiles) return;
+
         // quem está na tela passa na frente / whoever is on screen jumps the queue
         queueProfiles([user.id], true);
-    }, [user.id, allowed, profileBadges, s.fetchProfiles, s.fetchBotProfiles]);
+
+        // tenta de novo de tempos em tempos: se a busca falhou (rede/limite), a badge não fica
+        // faltando pra sempre só porque a linha não desmontou.
+        // retries from time to time: if the fetch failed (network/limit), the badge doesn't stay
+        // missing forever just because the row didn't unmount.
+        const timer = setInterval(() => queueProfiles([user.id], true), 45000);
+        return () => clearInterval(timer);
+    }, [user.id, needsProfile, s.fetchProfiles, s.fetchBotProfiles]);
 
     if (!allowed) return null;
 
-    let badges = profileBadges ?? getFlagBadges(user);
+    // junta tudo: perfil > cache > flags públicas. Assim um perfil parcial (ou vazio) nunca
+    // esconde badges que já eram conhecidas, e as flags aparecem mesmo antes do perfil chegar.
+    // merge everything: profile > cache > public flags. So a partial (or empty) profile never hides
+    // badges already known, and flags show even before the profile arrives.
+    let badges = mergeBadges(profileBadges, cachedBadges, getFlagBadges(user));
 
-    // Impulso sem buscar perfil: nível pelo premiumSince do membro + ícone aprendido do cache.
-    // Boost without a profile fetch: level from the member's premiumSince + icon learned from the cache.
+    // Impulso sem buscar perfil: nível pelo premiumSince do membro + ícone fixo por nível.
+    // Boost without a profile fetch: level from the member's premiumSince + fixed icon per level.
     if (guildId) {
         const member = GuildMemberStore.getMember(guildId, user.id);
         const level = boostLevelFromPremiumSince((member as any)?.premiumSince);

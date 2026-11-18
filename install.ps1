@@ -21,7 +21,8 @@ param(
     [string]$VencordDir = (Join-Path ([Environment]::GetFolderPath("MyDocuments")) "Vencord"),
     [ValidateSet("auto", "en", "pt")][string]$Lang = "auto",
     [switch]$Yes,          # answer "yes" to everything / responde "sim" para tudo
-    [switch]$SkipVesktop   # only build, don't touch Vesktop / só compila, não mexe no Vesktop
+    [switch]$SkipVesktop,  # only build, don't touch Vesktop / só compila, não mexe no Vesktop
+    [switch]$Canary        # inject into the official Discord Canary instead of Vesktop / injeta no Discord Canary oficial em vez do Vesktop
 )
 
 $ErrorActionPreference = "Stop"
@@ -238,7 +239,39 @@ Ok ((T "Vencord built in" "Vencord compilado em") + " $dist")
 
 if ($SkipVesktop) {
     Write-Host ""
-    Ok (T "Done (Vesktop was not changed because of -SkipVesktop)." "Pronto (o Vesktop não foi alterado por causa do -SkipVesktop).")
+    Ok (T "Done (Vesktop was not changed because of -SkipVesktop)." "Pronto (o Vesktop n�o foi alterado por causa do -SkipVesktop).")
+    exit 0
+}
+
+if ($Canary) {
+    # Instala no Discord Canary oficial: fecha o Canary, injeta o Vencord e abre de novo.
+    # Installs into the official Discord Canary: closes Canary, injects Vencord, reopens.
+    Step 5 (T "Installing into Discord Canary" "Instalando no Discord Canary")
+    $canaryDir = Join-Path $env:LOCALAPPDATA "DiscordCanary"
+
+    if (!(Test-Path $canaryDir)) {
+        Fail (T "Discord Canary is not installed at $canaryDir. Install it first." "O Discord Canary não está instalado em $canaryDir. Instale-o primeiro.")
+    }
+
+    Get-Process DiscordCanary -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*DiscordCanary*" } | Stop-Process -Force
+
+    Step 6 (T "Injecting Vencord into Discord Canary" "Injetando o Vencord no Discord Canary")
+    $vencordRoot = $VencordDir
+    $old = Get-Location
+    Push-Location $vencordRoot
+    node (Join-Path $vencordRoot "scripts\runInstaller.mjs") -- --install -location $canaryDir
+    $injectCode = $LASTEXITCODE
+    Pop-Location
+    Set-Location $old
+
+    if ($injectCode -ne 0) {
+        Fail (T "Failed to inject Vencord into Discord Canary." "Falha ao injetar o Vencord no Discord Canary.")
+    }
+
+    Step 7 (T "Finishing" "Finalizando")
+    Ok (T "BadgesPlus is injected into Discord Canary. Opening it now." "O BadgesPlus está injetado no Discord Canary. Abrindo agora.")
+    Write-Host ("   " + (T "Note: Discord Canary re-downloads itself when it updates and the injection disappears until you run the command again." "Observação: o Discord Canary se reinstala sozinho quando atualiza e a injeção some até você rodar o comando de novo."))
+    Start-Process (Join-Path $canaryDir "DiscordCanary.exe")
     exit 0
 }
 

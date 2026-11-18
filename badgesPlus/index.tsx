@@ -11,10 +11,11 @@ import { addMessageDecoration, removeMessageDecoration } from "@api/MessageDecor
 import ErrorBoundary from "@components/ErrorBoundary";
 import definePlugin from "@utils/types";
 import { findComponentByCodeLazy } from "@webpack";
-import { SelectedGuildStore, useStateFromStores } from "@webpack/common";
+import { FluxDispatcher, SelectedGuildStore, useStateFromStores } from "@webpack/common";
 import type { ReactNode } from "react";
 
-import { ensureCacheLoaded, flush } from "./badgeCache";
+import { startBackgroundLoader, stopBackgroundLoader } from "./backgroundLoader";
+import { ensureCacheLoaded, flush, setCachedBadges } from "./badgeCache";
 import { t } from "./i18n";
 import { flushMemberCache } from "./memberCache";
 import { cancelAllMemberScans } from "./memberLoader";
@@ -55,6 +56,19 @@ function SearchBadgesButton() {
     );
 }
 
+// Aprende as badges de QUALQUER perfil que o cliente carregar (abrir o perfil de alguém, popout,
+// carregamentos do próprio Discord). Sem isso, só a fila do plugin alimentava o cache, e quem era
+// carregado por fora ficava sem badge na próxima sessão.
+// Learns badges from ANY profile the client loads (opening someone's profile, popout, Discord's own
+// fetches). Without this, only the plugin's queue fed the cache, and profiles loaded elsewhere were
+// badge-less next session.
+function onProfileLoaded(action: any) {
+    const profile = action?.userProfile ?? action?.profile;
+    const id = profile?.user?.id ?? action?.userId;
+    if (!id || !Array.isArray(profile?.badges)) return;
+    setCachedBadges(id, profile.badges);
+}
+
 export default definePlugin({
     name: "BadgesPlus",
     description: "Profile badges next to names (chat & member list) + search members by badge. / Badges do perfil ao lado do nome (chat e lista de membros) + pesquisa de membros por badge.",
@@ -85,6 +99,10 @@ export default definePlugin({
         setConcurrency(settings.store.loadConcurrency);
         void ensureCacheLoaded();
         void initCooldown();
+        startBackgroundLoader();
+
+        FluxDispatcher.subscribe("USER_PROFILE_FETCH_SUCCESS", onProfileLoaded);
+        FluxDispatcher.subscribe("USER_PROFILE_UPDATE", onProfileLoaded);
 
         addMessageDecoration("vc-badgesplus", props =>
             props.message?.author
@@ -101,8 +119,11 @@ export default definePlugin({
     stop() {
         cancelAllMemberScans();
         clearQueue();
+        stopBackgroundLoader();
         void flush();
         void flushMemberCache();
+        FluxDispatcher.unsubscribe("USER_PROFILE_FETCH_SUCCESS", onProfileLoaded);
+        FluxDispatcher.unsubscribe("USER_PROFILE_UPDATE", onProfileLoaded);
         removeMessageDecoration("vc-badgesplus");
         removeMemberListDecorator("vc-badgesplus");
     }

@@ -14,7 +14,7 @@ import {
 } from "@webpack/common";
 
 import { getBoostIcon, getCachedBadges, onCacheChange } from "./badgeCache";
-import { badgeIconUrl, badgeSortRank, boostLevelFromPremiumSince, getBadgeLabel, getCategory, getFlagBadges, getTooltip, isCategoryEnabled, makeBoostBadge, SimpleBadge } from "./badges";
+import { badgeIconUrl, badgeSortRank, boostLevelFromPremiumSince, customBadgeFilter, getBadgeLabel, getCategory, getFlagBadges, getTooltip, isCategoryEnabled, makeBoostBadge, mergeBadges, SimpleBadge } from "./badges";
 import { plural, t } from "./i18n";
 import { CachedMember, captureMemberCache, clearMemberCache, ensureMemberCacheLoaded, getCachedMembers, onMemberCacheChange } from "./memberCache";
 import { cancelAllMemberScans, deepScanMembers, isScanningGuild, MemberScanProgress, scanGuildMembers, searchGuildMembers } from "./memberLoader";
@@ -72,8 +72,10 @@ function openDm(userId: string) {
     }
 }
 
-/** Manda um "oi" na DM e já pula pra conversa / sends a "hi" in the DM and jumps to the chat */
+/** Manda a mensagem rápida configurada na DM e pula pra conversa / sends the configured quick message to the DM and jumps to the chat */
 async function sendHi(userId: string) {
+    const message = (settings.store.quickMessage ?? "").trim() || "oi";
+
     try {
         let channelId = ChannelStore.getDMFromUserId(userId);
 
@@ -94,13 +96,13 @@ async function sendHi(userId: string) {
             return;
         }
 
-        await sendMessage(channelId, { content: "oi" });
+        await sendMessage(channelId, { content: message });
         openDm(userId);
-        showToast("oi enviado!", "success");
+        showToast(t(`Message sent: "${message}"`, `Mensagem enviada: "${message}"`), "success");
     } catch (e) {
-        console.error("[BadgesPlus] falha ao mandar oi / failed to send hi", e);
+        console.error("[BadgesPlus] falha ao mandar mensagem / failed to send quick message", e);
         openDm(userId);
-        showToast("Falha ao mandar oi — veja o console", "failure");
+        showToast(t("Couldn't send the message — see the console", "Falha ao mandar mensagem — veja o console"), "failure");
     }
 }
 
@@ -163,11 +165,16 @@ function useGuildMembers(guildId: string, includeBots: boolean, cachedMembers: C
         const push = (id: string, user: User, cached?: CachedMember) => {
             const member: any = GuildMemberStore.getMember(guildId, id);
             const profile = UserProfileStore.getUserProfile(id);
-            let badges = (profile?.badges as SimpleBadge[] | undefined) ?? getCachedBadges(id) ?? getFlagBadges(user);
+            let badges = mergeBadges(
+                profile?.badges as SimpleBadge[] | undefined,
+                getCachedBadges(id),
+                getFlagBadges(user)
+            );
 
-            // Badge de impulso sem buscar perfil: vem do premiumSince do membro. O ícone é aprendido
-            // de qualquer perfil de booster já carregado. / Boost badge without a profile fetch: it
-            // comes from the member's premiumSince. The icon is learned from any booster profile cached.
+            // Badge de impulso sem buscar perfil: vem do premiumSince do membro. O ícone é fixo por
+            // nível (com fallback aprendido de perfis reais). / Boost badge without a profile fetch:
+            // it comes from the member's premiumSince. The icon is fixed per level (with a learned
+            // fallback from real profiles).
             const level = boostLevelFromPremiumSince(member?.premiumSince ?? cached?.premiumSince);
             const boost = makeBoostBadge(level, getBoostIcon(level));
             if (boost && !badges.some(b => b.id === boost.id)) badges = [...badges, boost];
@@ -309,7 +316,8 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
             .map(m => ({
                 ...m,
                 badges: m.badges.filter(b => {
-                    if (s.searchRespectCategories && !isCategoryEnabled(b)) return false;
+                    if (!customBadgeFilter(b)) return false;
+                    if (s.badgeFilterMode !== "only" && s.searchRespectCategories && !isCategoryEnabled(b)) return false;
                     if (s.searchHideQuestBadges && getCategory(b) === "quests") return false;
                     return true;
                 })
@@ -320,7 +328,7 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
                 return true;
             });
     }, [
-        members, usernameQuery, lengthFilter, s.searchHideQuestBadges, s.searchRespectCategories,
+        members, usernameQuery, lengthFilter, s.searchHideQuestBadges, s.searchRespectCategories, s.badgeFilterMode, s.badgeFilterIds,
         s.showNitro, s.showBoost, s.showHypeSquad, s.showHypeSquadEvents, s.showDiscordPrograms,
         s.showLegacyUsername, s.showQuests, s.showOther
     ]);
@@ -744,12 +752,12 @@ function SearchBadgesModal({ guildId, modalProps }: { guildId: string; modalProp
                                 </div>
                                 {s.searchShowMessageButton && m.user.id !== myId && !m.user.bot && (
                                     <>
-                                        <Tooltip text={t("Send \"oi\"", "Mandar \"oi\"")}>
+                                        <Tooltip text={t("Send quick message", "Mandar mensagem rápida")}>
                                             {props => (
                                                 <button
                                                     {...props}
                                                     className="vc-badgesplus-message"
-                                                    aria-label={t("Send \"oi\"", "Mandar \"oi\"")}
+                                                    aria-label={t("Send quick message", "Mandar mensagem rápida")}
                                                     onClick={() => void sendHi(m.user.id)}
                                                 >
                                                     <MessageIcon />
