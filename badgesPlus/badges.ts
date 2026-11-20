@@ -82,6 +82,20 @@ export function getFlagBadges(user: User): SimpleBadge[] {
     return FLAG_BADGES.filter(b => (flags & b.flag) === b.flag);
 }
 
+// Badge genérica de Nitro, disponível na hora pelo `premiumType` do usuário (o objeto de usuário do
+// cliente já traz isso). O nível/tenure continua vindo do perfil, mas a badge de Nitro não espera
+// mais busca de perfil — que era o motivo dela demorar enquanto a HypeSquad aparecia na hora.
+// Generic Nitro badge, available immediately from the user's `premiumType` (the client's user object
+// already carries it). The tenure tier still comes from the profile, but the Nitro badge no longer
+// waits for a profile fetch — which was why it lagged while HypeSquad showed instantly.
+export const NITRO_ICON = "2ba85e8026a8614b640c2837bcdfe21b";
+
+export function getPremiumBadges(user: User): SimpleBadge[] {
+    const premiumType = Number((user as any).premiumType) || 0;
+    if (premiumType <= 0) return [];
+    return [{ id: "premium", description: "Nitro", icon: NITRO_ICON }];
+}
+
 // ---- Nomes / Names -----------------------------------------------------------
 
 const LABELS: Record<string, [en: string, pt: string]> = {

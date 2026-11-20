@@ -14,7 +14,7 @@ import {
 } from "@webpack/common";
 
 import { getBoostIcon, getCachedBadges, onCacheChange } from "./badgeCache";
-import { badgeIconUrl, badgeSortRank, boostLevelFromPremiumSince, customBadgeFilter, getBadgeLabel, getCategory, getFlagBadges, getTooltip, isCategoryEnabled, makeBoostBadge, mergeBadges, SimpleBadge } from "./badges";
+import { badgeIconUrl, badgeSortRank, boostLevelFromPremiumSince, customBadgeFilter, getBadgeLabel, getCategory, getFlagBadges, getPremiumBadges, getTooltip, isCategoryEnabled, makeBoostBadge, mergeBadges, SimpleBadge } from "./badges";
 import { plural, t } from "./i18n";
 import { CachedMember, captureMemberCache, clearMemberCache, ensureMemberCacheLoaded, getCachedMembers, onMemberCacheChange } from "./memberCache";
 import { cancelAllMemberScans, deepScanMembers, isScanningGuild, MemberScanProgress, scanGuildMembers, searchGuildMembers } from "./memberLoader";
@@ -57,6 +57,7 @@ function cachedUser(member: CachedMember): User {
         globalName: member.globalName,
         bot: member.bot,
         publicFlags: member.publicFlags,
+        premiumType: member.premiumType ?? 0,
         avatar: "",
         getAvatarURL: () => member.avatarUrl,
         getDefaultAvatarURL: () => member.avatarUrl
@@ -168,6 +169,7 @@ function useGuildMembers(guildId: string, includeBots: boolean, cachedMembers: C
             let badges = mergeBadges(
                 profile?.badges as SimpleBadge[] | undefined,
                 getCachedBadges(id),
+                getPremiumBadges(user),
                 getFlagBadges(user)
             );
 

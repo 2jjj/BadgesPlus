@@ -37,11 +37,20 @@ const permanentFailed = new Set<string>();
 const retries = new Map<string, number>();
 const listeners = new Set<() => void>();
 
+// Quem está na tela (chat/lista de membros) ganha prioridade de verdade: passa na frente, roda
+// com menos intervalo depois do fetch e pausa a carga de fundo enquanto tem gente esperando.
+// Whoever is on screen (chat/member list) gets real priority: jumps the queue, runs with a smaller
+// gap after the fetch, and pauses the background loader while people are waiting.
+const priorityQueued = new Set<string>();
+let priorityInFlight = 0;
+
 // Falha passageira (rede, 429, 5xx) não é sentença de morte: o perfil volta pra fila sozinho
 // depois desse tempo. Só 403/404 (conta inexistente/sem acesso) ficam de fora até um retry manual.
 // A transient failure (network, 429, 5xx) isn't final: the profile rejoins the queue by itself
 // after this time. Only 403/404 (missing account/no access) stay out until a manual retry.
-const FAIL_RETRY_MS = 5 * 60 * 1000;
+// Curto de propósito: a badge de Nitro não pode ficar minutos sem aparecer por uma falha boba.
+// Short on purpose: the Nitro badge can't stay missing for minutes because of a silly failure.
+const FAIL_RETRY_MS = 60 * 1000;
 
 let minDelay = 500;
 let maxConcurrency = 2;
@@ -186,7 +195,12 @@ export function queueProfiles(ids: string[], front = false) {
             if (index !== -1) queue.splice(index, 1);
         }
         queued.add(id);
-        front ? queue.unshift(id) : queue.push(id);
+        if (front) {
+            priorityQueued.add(id);
+            queue.unshift(id);
+        } else {
+            queue.push(id);
+        }
     }
 
     notify();
@@ -196,6 +210,8 @@ export function queueProfiles(ids: string[], front = false) {
 export function clearQueue() {
     queue.length = 0;
     queued.clear();
+    priorityQueued.clear();
+    priorityInFlight = 0;
     clearBulkLoader();
     notify();
 }
@@ -259,6 +275,13 @@ async function bulkTick() {
     if (pause > 0) {
         // o limite pediu: respeita e volta depois, com folga / the limit asked: respect it and come back later, with slack
         scheduleBulk(pause + 1000 + Math.random() * 1000);
+        return;
+    }
+
+    if (priorityQueued.size > 0 || priorityInFlight > 0) {
+        // tem gente na tela esperando badge: a carga de fundo sai da frente
+        // someone on screen is waiting for a badge: the background load steps aside
+        scheduleBulk(1000);
         return;
     }
 
@@ -339,11 +362,15 @@ async function tryProfileFetch(id: string, bulk: boolean): Promise<"ok" | "ratel
         streak = 0;
 
         if (e?.status === 429) {
-            // Backoff exponencial, com piso no retry_after que o Discord mandar.
-            // Exponential backoff, floored by Discord's retry_after.
+            // Backoff: a PRIMEIRA 429 é quase sempre limite de rota e sai rápido; só insiste no
+            // freio grande se repetir. Assim a badge de quem está na tela não fica minutos parada.
+            // Backoff: the FIRST 429 is almost always a route limit and clears fast; only hit the
+            // big brake if it repeats. That keeps the on-screen badge from stalling for minutes.
             successesSince429 = 0;
             consecutive429++;
-            const expMs = Math.min(MAX_BACKOFF, 10000 * 2 ** Math.min(consecutive429 - 1, 5));
+            const expMs = consecutive429 === 1
+                ? 2500
+                : Math.min(MAX_BACKOFF, 10000 * 2 ** Math.min(consecutive429 - 2, 5));
             const retryMs = (Number(e?.body?.retry_after) || 0) * 1000;
             const waitMs = Math.max(expMs, retryMs);
 
@@ -383,8 +410,11 @@ async function worker() {
     while (queue.length) {
         const id = queue.shift()!;
         queued.delete(id);
+        const isPriority = priorityQueued.delete(id);
+
         if (isDone(id)) continue;
         inFlight.add(id);
+        if (isPriority) priorityInFlight++;
 
         const wait = pausedUntil - Date.now();
         // jitter no fim do cooldown: os workers não voltam todos no mesmo instante
@@ -392,21 +422,28 @@ async function worker() {
         if (wait > 0) await sleep(wait + Math.random() * 750);
 
         const result = await tryProfileFetch(id, false);
+        if (isPriority) priorityInFlight = Math.max(0, priorityInFlight - 1);
 
         if (result === "ratelimited" || result === "retry") {
-            // devolve pro FIM da fila: não ficar churnando as mesmas contas na frente.
-            // O wait de verdade acontece no topo do loop, sem dormir duas vezes.
-            // back of the line: don't churn the same accounts at the front.
-            // The actual wait happens at the loop top, so we don't sleep twice.
+            // devolve pro FIM da fila normal; quem está na tela volta pra FRENTE
+            // back of the normal line; whoever is on screen goes back to the FRONT
             queued.add(id);
-            queue.push(id);
+            if (isPriority) {
+                priorityQueued.add(id);
+                queue.unshift(id);
+            } else {
+                queue.push(id);
+            }
             notify();
             continue;
         }
 
         notify();
+        // na tela o intervalo é curto; no resto vale o ritmo das configurações
+        // on screen the gap is short; everywhere else the setting's pace applies
+        const gap = isPriority ? Math.max(150, Math.min(delay, 300)) : delay;
         // jitter evita que todos os workers batam no mesmo instante / jitter keeps the workers
         // from hitting Discord at the exact same time
-        await sleep(delay + Math.random() * 120);
+        await sleep(gap + Math.random() * (isPriority ? 60 : 120));
     }
 }

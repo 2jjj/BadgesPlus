@@ -5,7 +5,7 @@
  */
 
 import { Logger } from "@utils/Logger";
-import { ChannelStore, GuildMemberStore, GuildStore, RelationshipStore } from "@webpack/common";
+import { ChannelStore, GuildMemberStore, GuildStore, RelationshipStore, UserStore } from "@webpack/common";
 
 import { captureMemberCache } from "./memberCache";
 import { deepScanMembers, isDeepScanFresh, isScanningGuild } from "./memberLoader";
@@ -20,6 +20,7 @@ const CAPTURE_EVERY = 10 * 60 * 1000;
 let interval: ReturnType<typeof setInterval> | undefined;
 let lastCapture = 0;
 let deepScanGuild: string | undefined;
+let premiumSampleLogged = false;
 
 function dmRecipientIds(): string[] {
     try {
@@ -71,6 +72,24 @@ function guildMemberIds(): string[] {
     return ids;
 }
 
+// Diagnóstico leve: confirma se o `premiumType` já vem no usuário (permite mostrar Nitro na hora).
+// Light diagnostic: confirms whether `premiumType` already comes with the user (lets us show Nitro instantly).
+function logPremiumSample() {
+    try {
+        const ids = guildMemberIds().slice(0, 400);
+        let known = 0;
+        let nitro = 0;
+
+        for (const id of ids) {
+            const type = Number((UserStore.getUser(id) as any)?.premiumType);
+            if (Number.isFinite(type)) known++;
+            if (type > 0) nitro++;
+        }
+
+        logger.info(`premiumType: ${known}/${ids.length} disponíveis, ${nitro} com Nitro / available, with Nitro`);
+    } catch { /* amostra é opcional / sample is optional */ }
+}
+
 function collect(): string[] {
     const target = settings.store.backgroundLoadTarget;
     const seen = new Set<string>();
@@ -89,6 +108,11 @@ function collect(): string[] {
 
 function run() {
     if (!settings.store.backgroundLoadAll) return;
+
+    if (!premiumSampleLogged) {
+        premiumSampleLogged = true;
+        logPremiumSample();
+    }
 
     const before = bulkPendingCount();
     queueBulkProfiles(collect());

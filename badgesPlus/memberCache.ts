@@ -24,6 +24,7 @@ export interface CachedMember {
     nick?: string | null;
     bot: boolean;
     publicFlags: number;
+    premiumType?: number;
     premiumSince?: string | null;
     avatarUrl: string;
     capturedAt: number;
@@ -161,6 +162,7 @@ export async function captureMemberCache(guildId: string, force = false): Promis
             nick: GuildMemberStore.getNick(guildId, id),
             bot: !!user.bot,
             publicFlags: Number(user.publicFlags) || 0,
+            premiumType: Number(user.premiumType) || 0,
             premiumSince: premiumSince ? new Date(premiumSince).toISOString() : null,
             avatarUrl: avatar,
             capturedAt: now

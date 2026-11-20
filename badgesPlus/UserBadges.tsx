@@ -8,7 +8,7 @@ import { User } from "@vencord/discord-types";
 import { GuildMemberStore, Tooltip, useEffect, useReducer, UserProfileStore, UserStore, useStateFromStores } from "@webpack/common";
 
 import { getBoostIcon, getCachedBadges, isCacheLoaded, onCacheChange } from "./badgeCache";
-import { badgeIconUrl, boostLevelFromPremiumSince, filterAndSortBadges, getBadgeLabel, getFlagBadges, getTooltip, makeBoostBadge, mergeBadges, SimpleBadge } from "./badges";
+import { badgeIconUrl, boostLevelFromPremiumSince, filterAndSortBadges, getBadgeLabel, getFlagBadges, getPremiumBadges, getTooltip, makeBoostBadge, mergeBadges, SimpleBadge } from "./badges";
 import { queueProfiles } from "./profileQueue";
 import { settings } from "./settings";
 
@@ -46,11 +46,11 @@ export function UserBadges({ user, where, guildId }: { user: User; where: "chat"
         // quem está na tela passa na frente / whoever is on screen jumps the queue
         queueProfiles([user.id], true);
 
-        // tenta de novo de tempos em tempos: se a busca falhou (rede/limite), a badge não fica
-        // faltando pra sempre só porque a linha não desmontou.
-        // retries from time to time: if the fetch failed (network/limit), the badge doesn't stay
-        // missing forever just because the row didn't unmount.
-        const timer = setInterval(() => queueProfiles([user.id], true), 45000);
+        // tenta de novo de tempos em tempos: se a busca falhou (rede/limite), a badge de Nitro não
+        // fica faltando muito tempo só porque a linha não desmontou.
+        // retries from time to time: if the fetch failed (network/limit), the Nitro badge doesn't
+        // stay missing for long just because the row didn't unmount.
+        const timer = setInterval(() => queueProfiles([user.id], true), 15000);
         return () => clearInterval(timer);
     }, [user.id, needsProfile, s.fetchProfiles, s.fetchBotProfiles]);
 
@@ -60,7 +60,7 @@ export function UserBadges({ user, where, guildId }: { user: User; where: "chat"
     // esconde badges que já eram conhecidas, e as flags aparecem mesmo antes do perfil chegar.
     // merge everything: profile > cache > public flags. So a partial (or empty) profile never hides
     // badges already known, and flags show even before the profile arrives.
-    let badges = mergeBadges(profileBadges, cachedBadges, getFlagBadges(user));
+    let badges = mergeBadges(profileBadges, cachedBadges, getPremiumBadges(user), getFlagBadges(user));
 
     // Impulso sem buscar perfil: nível pelo premiumSince do membro + ícone fixo por nível.
     // Boost without a profile fetch: level from the member's premiumSince + fixed icon per level.
